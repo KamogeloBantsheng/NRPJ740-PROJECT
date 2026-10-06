@@ -1,0 +1,78 @@
+/* NPRJ740 Maintenance System Design Tokens & Reset */
+:root {
+  /* Neutral Color Tokens */
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+
+  /* Brand & Interactive Tokens */
+  --color-primary: #1e3a8a;
+  --color-primary-hover: #172554;
+  --color-primary-text: #ffffff;
+  --color-focus: #2563eb;
+
+  /* Lifecycle Status Tokens (Table 5.5) */
+  --status-submitted: #0284c7;
+  --status-needs-clarification: #d97706;
+  --status-approved: #2563eb;
+  --status-assigned: #7c3aed;
+  --status-in-progress: #ea580c;
+  --status-work-completed: #059669;
+  --status-reopened: #b45309;
+  --status-verified-closed: #15803d;
+  --status-rejected: #dc2626;
+
+  /* Priority Tokens */
+  --priority-low: #64748b;
+  --priority-medium: #0284c7;
+  --priority-high: #ea580c;
+  --priority-critical: #dc2626;
+
+  /* Typography & Sizing */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  min-width: 360px; /* NFR-07 Mobile-first 360px requirement */
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Accessible focus styles */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
