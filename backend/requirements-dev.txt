@@ -1,0 +1,2 @@
+# NPRJ740 Backend Dev/Lint Dependencies (Phase 0 Pinned)
+ruff==0.16.10

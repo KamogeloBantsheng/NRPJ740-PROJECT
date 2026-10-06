@@ -1,0 +1,10 @@
+"""URL configuration for NPRJ740 Maintenance Request & Work-Order Management System.
+Per Section 6.3: /api/health/ has a trailing slash.
+"""
+from django.urls import path
+
+from .views import health_check
+
+urlpatterns = [
+    path("api/health/", health_check, name="health_check"),
+]
