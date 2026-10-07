@@ -1,3 +1,4 @@
-# NPRJ740 Backend Dependencies (Phase 0 Pinned)
+# NPRJ740 Backend Dependencies (Phase 1 Pinned)
 django==5.2.18
 psycopg[binary]==3.3.6
+argon2-cffi==25.1.0

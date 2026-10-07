@@ -1,0 +1,11 @@
+# Ruff configuration for NPRJ740
+target-version = "py312"
+line-length = 120
+
+[lint]
+select = ["E", "F", "I", "BLE", "RUF"]
+ignore = []
+
+[lint.per-file-ignores]
+# Django migrations are auto-generated and legitimately use mutable lists and long lines
+"**/migrations/*" = ["RUF012", "E501"]
