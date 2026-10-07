@@ -20,7 +20,7 @@ This living document tracks each Included requirement (FR-01 to FR-18) from prob
 | FR-14 | P-3, SC-1 | UC-14 | SCR-09 | TransitionService | `maintenance_requests`, `audit_logs` | BR-01 | TBD (Slice 5) | TBD (TC-29, TC-35) |
 | FR-15 | P-3, SC-1 | UC-15 | SCR-09 | TransitionService | `maintenance_requests`, `audit_logs` | BR-02 | TBD (Slice 5) | TBD (TC-30, TC-31, TC-35) |
 | FR-16 | P-4, SC-2 | UC-16 | SCR-10 | ReportingService, PermissionPolicy | `maintenance_requests`, `work_orders` | BR-04, NFR-06 | TBD (Slice 8) | TBD (TC-36, TC-37) |
-| FR-17 | P-4, SC-4 | (system behavior) | — | AuditService, TransitionService | `audit_logs` | NFR-03, NFR-05 | TBD (Phase 1 / Slice 1-8) | TBD (TC-38 to TC-40) |
+| FR-17 | P-4, SC-4 | (system behavior) | — | AuditService, TransitionService | `audit_logs` | NFR-03, NFR-05 | `apps.audit.models` (AuditEvent), `0001_initial` triggers (Phase 1 / Slice 1-8) | TBD (TC-38 to TC-40) |
 | FR-18 | P-4, SC-4 | UC-18 | SCR-05, SCR-13 | AuditService, PermissionPolicy | `audit_logs` | NFR-05 | TBD (Slice 8) | TBD (TC-41) |
 
 ---
