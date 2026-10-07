@@ -4,7 +4,7 @@ line-length = 120
 
 [lint]
 select = ["E", "F", "I", "BLE", "RUF"]
-ignore = []
+ignore = ["EXE001"]
 
 [lint.per-file-ignores]
 # Django migrations are auto-generated and legitimately use mutable lists and long lines
