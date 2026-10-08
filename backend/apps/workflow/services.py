@@ -1,0 +1,199 @@
+"""TransitionService implementing Table 5.1 lifecycle transitions, row-locking, and audit logging."""
+
+import uuid
+from typing import Any
+
+from config.exceptions import ConflictException, ForbiddenException, NotFoundException, ValidationException
+from django.db import transaction
+from django.utils import timezone
+
+from apps.accounts.models import Role, User
+from apps.audit.models import AuditAction
+from apps.audit.services import AuditService
+from apps.locations.models import FaultCategory, Location
+from apps.workflow.models import MaintenanceRequest, Priority, RequestStatus, TransitionRule
+
+
+class TransitionService:
+    """Orchestrates all request state transitions under row locks (AGENT_BRIEF section 5, Section 5.1).
+
+    Enforces Table 5.1 legal transitions, concurrency guards via expected_status (409),
+    role-based transition authorization, and writes append-only audit records in the same transaction.
+    """
+
+    @classmethod
+    def submit_request(
+        cls,
+        *,
+        resident: User,
+        location: Location,
+        category: FaultCategory,
+        description: str,
+        client_token: uuid.UUID | None = None,
+    ) -> tuple[MaintenanceRequest, bool]:
+        """T1: Initial fault report submission by a resident.
+
+        Enforces resident role, residence boundary (INV-4), active master data,
+        trimmed description length (10 to 2000 chars), idempotency via client_token,
+        and logs REQUEST_SUBMITTED audit event.
+        """
+        # 1. Actor check
+        if resident.role != Role.RESIDENT:
+            raise ForbiddenException("Only residents can submit maintenance requests.")
+        if not resident.is_active:
+            raise ForbiddenException("Your account is deactivated.")
+
+        # 2. Scope & location validation (INV-4: Must be in the Resident's residence)
+        if not resident.residence_id or location.residence_id != resident.residence_id:
+            raise ValidationException(
+                "Location must be within your assigned residence.",
+                fields={"location": ["Selected location is outside your assigned residence."]},
+            )
+
+        if not location.is_active:
+            raise ValidationException(
+                "Selected location is inactive.",
+                fields={"location": ["Selected location is inactive."]},
+            )
+
+        if not category.is_active:
+            raise ValidationException(
+                "Selected fault category is inactive.",
+                fields={"category": ["Selected fault category is inactive."]},
+            )
+
+        # 3. Description validation (10 to 2000 characters trimmed)
+        trimmed_desc = description.strip()
+        if len(trimmed_desc) < 10 or len(trimmed_desc) > 2000:
+            raise ValidationException(
+                "Description must be between 10 and 2,000 characters.",
+                fields={"description": ["Description must be between 10 and 2,000 characters."]},
+            )
+
+        # 4. Idempotency check
+        if client_token:
+            existing = MaintenanceRequest.objects.filter(
+                resident=resident,
+                client_token=client_token,
+            ).first()
+            if existing:
+                return existing, False
+        else:
+            client_token = uuid.uuid4()
+
+        # 5. Atomic persistence and audit recording
+        with transaction.atomic():
+            req = MaintenanceRequest.objects.create(
+                resident=resident,
+                location=location,
+                category=category,
+                description=trimmed_desc,
+                status=RequestStatus.SUBMITTED,
+                priority=None,
+                client_token=client_token,
+                closed_at=None,
+            )
+
+            AuditService.record(
+                action=AuditAction.REQUEST_SUBMITTED,
+                actor=resident,
+                request_id=req.id,
+                from_status=None,
+                to_status=RequestStatus.SUBMITTED,
+                details={
+                    "tracking_number": req.tracking_number,
+                    "location_id": location.id,
+                    "location_label": location.label,
+                    "location_kind": location.kind,
+                    "category_id": category.id,
+                    "category_name": category.name,
+                },
+            )
+
+            return req, True
+
+    @classmethod
+    def execute(
+        cls,
+        *,
+        request_id: int,
+        action: str,
+        actor: User,
+        expected_status: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> MaintenanceRequest:
+        """Execute a state transition under a row lock (SELECT FOR UPDATE).
+
+        Checks expected_status (409 on mismatch), matches against TransitionRule table,
+        verifies actor role, updates state and timestamps, and creates append-only audit event.
+        """
+        payload = payload or {}
+
+        with transaction.atomic():
+            # 1. Lock the request row first
+            req = (
+                MaintenanceRequest.objects.select_for_update()
+                .filter(id=request_id)
+                .first()
+            )
+            if not req:
+                raise NotFoundException(f"Maintenance request {request_id} not found.")
+
+            # 2. Concurrency check (409 if status differs from expected)
+            if expected_status and req.status != expected_status:
+                raise ConflictException(
+                    f"Request status has changed from '{expected_status}' to '{req.status}'.",
+                    current_status=req.status,
+                )
+
+            # 3. Match against TransitionRule
+            rule = TransitionRule.objects.filter(
+                action=action,
+                from_status=req.status,
+            ).first()
+            if not rule:
+                raise ConflictException(
+                    f"Action '{action}' is not permitted from status '{req.status}'.",
+                    current_status=req.status,
+                )
+
+            # 4. Check actor authorization
+            if rule.actor_role != actor.role:
+                raise ForbiddenException(
+                    f"Role '{actor.role}' is not permitted to perform '{action}'. Required: '{rule.actor_role}'."
+                )
+
+            # Additional owner check for Resident actions (e.g. PROVIDE_CLARIFICATION)
+            if rule.actor_role == Role.RESIDENT and req.resident_id != actor.id:
+                raise ForbiddenException("Only the resident who submitted the request may perform this action.")
+
+            old_status = req.status
+            new_status = rule.to_status
+
+            # 5. Apply state changes
+            req.status = new_status
+
+            # Handle priority if provided in payload (e.g. T4 APPROVE)
+            if "priority" in payload and payload["priority"] in Priority.values:
+                req.priority = payload["priority"]
+
+            # Handle terminal closure timestamp
+            if new_status in (RequestStatus.REJECTED, RequestStatus.VERIFIED_CLOSED):
+                req.closed_at = timezone.now()
+            else:
+                req.closed_at = None
+
+            req.save()
+
+            # 6. Record append-only audit event
+            AuditService.record(
+                action=rule.audit_action,
+                actor=actor,
+                request_id=req.id,
+                from_status=old_status,
+                to_status=new_status,
+                note=payload.get("note"),
+                details=payload.get("details", {}),
+            )
+
+            return req

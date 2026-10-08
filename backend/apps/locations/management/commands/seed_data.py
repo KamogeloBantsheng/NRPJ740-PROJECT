@@ -115,7 +115,13 @@ class Command(BaseCommand):
 
             self.stdout.write(f"Locations: {loc_created_count} created, {loc_existing_count} existing.")
 
-        # 4. Optional Demo Users Seeding
+        # 4. Sync Table 5.1 transition rules
+        from apps.workflow.rules import sync_transition_rules
+
+        rules_synced = sync_transition_rules()
+        self.stdout.write(f"Transition Rules: {rules_synced} rules synced.")
+
+        # 5. Optional Demo Users Seeding
         if options.get("with_demo") or getattr(settings, "SEED_DEMO_DATA", False):
             self.stdout.write("Seeding demo accounts as requested by setting/flag...")
             call_command("seed_demo_users")

@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     "apps.locations",
     "apps.accounts",
     "apps.audit",
+    "apps.workflow",
     "rest_framework",
 ]
 
