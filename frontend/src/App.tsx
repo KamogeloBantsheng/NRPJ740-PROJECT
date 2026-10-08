@@ -6,6 +6,9 @@ import { Navbar } from "./components/Navbar";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
+import { ResidentRequestsPage } from "./pages/ResidentRequestsPage";
+import { SubmitRequestPage } from "./pages/SubmitRequestPage";
+import { RequestDetailPage } from "./pages/RequestDetailPage";
 import {
   ForbiddenPage,
   NotFoundPage,
@@ -60,16 +63,28 @@ export function App() {
                   }
                 />
 
-                {/* Role-Specific Workspaces (SCR-03 through SCR-13 placeholders) */}
+                {/* Slice 2 Resident Workflow Screens (SCR-03, SCR-04, SCR-05) */}
                 <Route
                   path="/requests"
                   element={
                     <ProtectedRoute allowedRoles={["RESIDENT"]}>
-                      <RoleHomeView
-                        title="My Maintenance Requests"
-                        roleDescription="Residents report faults within Moroka Hall, view tracking status timelines, and respond to supervisor clarification queries."
-                        nextSliceName="Slice 2: Report & Track (SCR-03, SCR-04)"
-                      />
+                      <ResidentRequestsPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/requests/new"
+                  element={
+                    <ProtectedRoute allowedRoles={["RESIDENT"]}>
+                      <SubmitRequestPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/requests/:id"
+                  element={
+                    <ProtectedRoute allowedRoles={["RESIDENT", "SUPERVISOR", "WARDEN", "ADMIN"]}>
+                      <RequestDetailPage />
                     </ProtectedRoute>
                   }
                 />
