@@ -8,4 +8,6 @@ from .views import health_check
 urlpatterns = [
     path("api/health/", health_check, name="health_check"),
     path("api/", include("apps.accounts.urls")),
+    path("api/", include("apps.locations.urls")),
+    path("api/", include("apps.workflow.urls")),
 ]
