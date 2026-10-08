@@ -13,6 +13,8 @@ SECRET_KEY = get_env("DJANGO_SECRET_KEY", "insecure-dev-key-change-in-production
 DEBUG = get_env("DJANGO_DEBUG", "true", cast=bool)
 
 ALLOWED_HOSTS = [h.strip() for h in get_env("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
+if "testserver" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("testserver")
 
 # Application definition (No Django Admin per project specification)
 INSTALLED_APPS = [
@@ -24,6 +26,7 @@ INSTALLED_APPS = [
     "apps.locations",
     "apps.accounts",
     "apps.audit",
+    "rest_framework",
 ]
 
 AUTH_USER_MODEL = "accounts.User"
@@ -114,3 +117,14 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8080",
     "http://127.0.0.1:8080",
 ]
+
+# Django REST Framework configuration
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "EXCEPTION_HANDLER": "config.exceptions.standard_exception_handler",
+}

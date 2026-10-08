@@ -4,8 +4,8 @@ This living document tracks each Included requirement (FR-01 to FR-18) from prob
 
 | FR | Evidence | Use Case | Screen | Class / Service | Tables | Rules | Code Path | Tests (Test Phase) |
 |---|---|---|---|---|---|---|---|---|
-| FR-01 | SC-2 | UC-01 | SCR-01 | AuthService, PermissionPolicy | `users`, `django_session`, `audit_logs` | BR-07, NFR-02 | TBD (Slice 1) | TBD (TC-01 to TC-04) |
-| FR-02 | SC-2 | UC-02 | SCR-02 | AuthService | `users` | NFR-02 | TBD (Slice 1) | TBD (TC-05) |
+| FR-01 | SC-2 | UC-01 | SCR-01 | AuthService, PermissionPolicy | `users`, `django_session`, `audit_logs` | BR-07, NFR-02 | `AuthService.authenticate`, `LoginView`, `LogoutView`, `MeView`, `PermissionPolicy` (Slice 1) | TBD (TC-01 to TC-04) |
+| FR-02 | SC-2 | UC-02 | SCR-02 | AuthService | `users` | NFR-02 | `AuthService.change_password`, `ChangePasswordView` (Slice 1) | TBD (TC-05) |
 | FR-03 | SC-2 | UC-03 | SCR-11 | UserAdminService | `users`, `audit_logs` | BR-07 | TBD (Slice 7) | TBD (TC-06) |
 | FR-04 | SC-2 | UC-04 | SCR-12 | UserImportService, UserAdminService | `users`, `audit_logs` | BR-07, NFR-03 | TBD (Slice 7) | TBD (TC-07 to TC-09) |
 | FR-05 | P-1, P-2, SC-1 | UC-05 | SCR-04 | TransitionService, PermissionPolicy | `maintenance_requests`, `locations`, `fault_categories`, `audit_logs` | BR-05, BR-09 | `apps.locations.models`, `seed_data` (Slice 2 for transition) | TBD (TC-10 to TC-13, TC-35) |
