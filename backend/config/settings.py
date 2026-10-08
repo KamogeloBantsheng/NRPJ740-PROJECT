@@ -1,6 +1,7 @@
 """Django settings for NPRJ740 Maintenance Request & Work-Order Management System.
 Configured for PostgreSQL 16, server-side sessions, and strict security headers.
 """
+
 from pathlib import Path
 
 from .env import get_env
@@ -128,3 +129,7 @@ REST_FRAMEWORK = {
     ],
     "EXCEPTION_HANDLER": "config.exceptions.standard_exception_handler",
 }
+
+# Demo Data Seeding Settings (AGENT_BRIEF item 8)
+SEED_DEMO_DATA = get_env("SEED_DEMO_DATA", "false", cast=bool)
+DEMO_PASSWORD = get_env("DEMO_PASSWORD", "DemoPass#2026")

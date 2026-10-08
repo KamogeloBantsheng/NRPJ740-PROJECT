@@ -4,6 +4,7 @@ import csv
 from pathlib import Path
 
 from django.conf import settings
+from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -29,6 +30,11 @@ class Command(BaseCommand):
             type=str,
             default=None,
             help="Path to custom locations CSV file (defaults to data/seed/locations.csv).",
+        )
+        parser.add_argument(
+            "--with-demo",
+            action="store_true",
+            help="Also seed role demo accounts (FR-01, AGENT_BRIEF item 8).",
         )
 
     def handle(self, *args, **options):
@@ -65,9 +71,7 @@ class Command(BaseCommand):
                     cat_created_count += 1
                 else:
                     cat_existing_count += 1
-            self.stdout.write(
-                f"Fault Categories: {cat_created_count} created, {cat_existing_count} existing."
-            )
+            self.stdout.write(f"Fault Categories: {cat_created_count} created, {cat_existing_count} existing.")
 
             # 3. Seed Locations from CSV
             loc_created_count = 0
@@ -109,8 +113,11 @@ class Command(BaseCommand):
                     else:
                         loc_existing_count += 1
 
-            self.stdout.write(
-                f"Locations: {loc_created_count} created, {loc_existing_count} existing."
-            )
+            self.stdout.write(f"Locations: {loc_created_count} created, {loc_existing_count} existing.")
+
+        # 4. Optional Demo Users Seeding
+        if options.get("with_demo") or getattr(settings, "SEED_DEMO_DATA", False):
+            self.stdout.write("Seeding demo accounts as requested by setting/flag...")
+            call_command("seed_demo_users")
 
         self.stdout.write(self.style.SUCCESS("Seed process completed successfully."))
