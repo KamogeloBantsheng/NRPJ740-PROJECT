@@ -2,10 +2,16 @@
 
 from django.urls import path
 
-from apps.workflow.views import RequestDetailView, RequestListCreateView, RequestTimelineView
+from apps.workflow.views import (
+    RequestDetailView,
+    RequestListCreateView,
+    RequestTimelineView,
+    RequestTransitionView,
+)
 
 urlpatterns = [
     path("requests/", RequestListCreateView.as_view(), name="request-list-create"),
     path("requests/<int:pk>/", RequestDetailView.as_view(), name="request-detail"),
     path("requests/<int:pk>/timeline/", RequestTimelineView.as_view(), name="request-timeline"),
+    path("requests/<int:pk>/transition/", RequestTransitionView.as_view(), name="request-transition"),
 ]

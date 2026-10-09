@@ -3,10 +3,25 @@
 
 from rest_framework import serializers
 
+from apps.accounts.models import Role
 from apps.audit.models import AuditEvent
 from apps.audit.services import AuditService
 from apps.locations.models import FaultCategory, Location
-from apps.workflow.models import MaintenanceRequest
+from apps.workflow.models import MaintenanceRequest, Priority
+
+
+class TransitionExecuteSerializer(serializers.Serializer):
+    """Payload for executing a lifecycle state transition (Table 5.1)."""
+
+    action = serializers.CharField(required=True)
+    expected_status = serializers.CharField(required=True)
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+    priority = serializers.ChoiceField(
+        choices=Priority.choices,
+        required=False,
+        allow_null=True,
+        default=None,
+    )
 
 
 class SubmitRequestSerializer(serializers.Serializer):
@@ -70,6 +85,7 @@ class MaintenanceRequestListSerializer(serializers.ModelSerializer):
     location_floor = serializers.IntegerField(source="location.floor", read_only=True)
     location_kind = serializers.CharField(source="location.kind", read_only=True)
     description_snippet = serializers.SerializerMethodField()
+    resident_name = serializers.SerializerMethodField()
 
     class Meta:
         model = MaintenanceRequest
@@ -84,6 +100,7 @@ class MaintenanceRequestListSerializer(serializers.ModelSerializer):
             "location_floor",
             "location_kind",
             "description_snippet",
+            "resident_name",
             "created_at",
             "closed_at",
         )
@@ -92,6 +109,12 @@ class MaintenanceRequestListSerializer(serializers.ModelSerializer):
         if len(obj.description) > 100:
             return f"{obj.description[:97]}..."
         return obj.description
+
+    def get_resident_name(self, obj: MaintenanceRequest) -> str | None:
+        user = self.context.get("request").user if "request" in self.context else None
+        if user and user.role in (Role.WARDEN, Role.TECHNICIAN):
+            return None
+        return obj.resident.full_name
 
 
 class MaintenanceRequestDetailSerializer(serializers.ModelSerializer):
@@ -121,7 +144,10 @@ class MaintenanceRequestDetailSerializer(serializers.ModelSerializer):
             "timeline",
         )
 
-    def get_resident(self, obj: MaintenanceRequest) -> dict:
+    def get_resident(self, obj: MaintenanceRequest) -> dict | None:
+        user = self.context.get("request").user if "request" in self.context else None
+        if user and user.role in (Role.WARDEN, Role.TECHNICIAN):
+            return None
         return {
             "id": obj.resident_id,
             "full_name": obj.resident.full_name,

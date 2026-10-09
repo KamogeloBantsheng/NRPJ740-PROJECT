@@ -167,15 +167,42 @@ class TransitionService:
             if rule.actor_role == Role.RESIDENT and req.resident_id != actor.id:
                 raise ForbiddenException("Only the resident who submitted the request may perform this action.")
 
+            # Residence boundary check for Supervisor
+            if actor.role == Role.SUPERVISOR and actor.residence_id:
+                if req.location.residence_id != actor.residence_id:
+                    raise ForbiddenException("You cannot transition requests outside your assigned residence.")
+
             old_status = req.status
             new_status = rule.to_status
 
+            # Guard validation per action (Table 5.1 & BR-02, BR-08)
+            note = payload.get("note", "")
+            trimmed_note = note.strip() if isinstance(note, str) else ""
+
+            if action in ("REQUEST_CLARIFICATION", "PROVIDE_CLARIFICATION", "REJECT", "REASSIGN", "REOPEN"):
+                if len(trimmed_note) < 10:
+                    raise ValidationException(
+                        f"Action '{action}' requires a note or reason of at least 10 characters.",
+                        fields={"note": ["Note must be at least 10 characters long."]},
+                    )
+            elif action == "COMPLETE_WORK":
+                if len(trimmed_note) < 20:
+                    raise ValidationException(
+                        "Work completion requires notes of at least 20 characters.",
+                        fields={"note": ["Work completion notes must be at least 20 characters long."]},
+                    )
+
+            if action == "APPROVE":
+                priority = payload.get("priority")
+                if not priority or priority not in Priority.values:
+                    raise ValidationException(
+                        "A valid priority (LOW, MEDIUM, HIGH, CRITICAL) is required to approve a request.",
+                        fields={"priority": ["Priority is required for approval."]},
+                    )
+                req.priority = priority
+
             # 5. Apply state changes
             req.status = new_status
-
-            # Handle priority if provided in payload (e.g. T4 APPROVE)
-            if "priority" in payload and payload["priority"] in Priority.values:
-                req.priority = payload["priority"]
 
             # Handle terminal closure timestamp
             if new_status in (RequestStatus.REJECTED, RequestStatus.VERIFIED_CLOSED):
@@ -192,7 +219,7 @@ class TransitionService:
                 request_id=req.id,
                 from_status=old_status,
                 to_status=new_status,
-                note=payload.get("note"),
+                note=trimmed_note if trimmed_note else None,
                 details=payload.get("details", {}),
             )
 

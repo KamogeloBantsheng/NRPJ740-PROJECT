@@ -19,6 +19,7 @@ from apps.workflow.serializers import (
     MaintenanceRequestListSerializer,
     RequestTimelineEventSerializer,
     SubmitRequestSerializer,
+    TransitionExecuteSerializer,
 )
 from apps.workflow.services import TransitionService
 
@@ -35,13 +36,25 @@ class RequestListCreateView(APIView):
         # Optional filters
         req_status = request.query_params.get("status")
         if req_status:
-            qs = qs.filter(status=req_status)
+            statuses = [s.strip() for s in req_status.split(",") if s.strip()]
+            if len(statuses) == 1:
+                qs = qs.filter(status=statuses[0])
+            elif len(statuses) > 1:
+                qs = qs.filter(status__in=statuses)
 
         category_id = request.query_params.get("category_id")
         if category_id:
             qs = qs.filter(category_id=category_id)
 
-        serializer = MaintenanceRequestListSerializer(qs, many=True)
+        location_id = request.query_params.get("location_id")
+        if location_id:
+            qs = qs.filter(location_id=location_id)
+
+        serializer = MaintenanceRequestListSerializer(
+            qs,
+            many=True,
+            context={"request": request},
+        )
         return Response(serializer.data)
 
     def post(self, request: Request) -> Response:
@@ -99,7 +112,7 @@ class RequestDetailView(APIView):
         if not req or not PermissionPolicy.can_view_request(request.user, req):
             raise NotFoundException(f"Maintenance request {pk} not found or outside your scope.")
 
-        serializer = MaintenanceRequestDetailSerializer(req)
+        serializer = MaintenanceRequestDetailSerializer(req, context={"request": request})
         return Response(serializer.data)
 
 
@@ -120,3 +133,46 @@ class RequestTimelineView(APIView):
         events = AuditService.get_request_history(req.id)
         serializer = RequestTimelineEventSerializer(events, many=True)
         return Response(serializer.data)
+
+
+class RequestTransitionView(APIView):
+    """Execute a lifecycle state transition with row lock and concurrency guard (Table 5.1, ADR-02)."""
+
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request: Request, pk: int) -> Response:
+        req = (
+            MaintenanceRequest.objects.select_related(
+                "resident", "location", "category", "location__residence"
+            )
+            .filter(id=pk)
+            .first()
+        )
+        if not req or not PermissionPolicy.can_view_request(request.user, req):
+            raise NotFoundException(f"Maintenance request {pk} not found or outside your scope.")
+
+        serializer = TransitionExecuteSerializer(data=request.data)
+        if not serializer.is_valid():
+            raise ValidationException(
+                "Invalid transition payload.",
+                fields=serializer.errors,
+            )
+
+        data = serializer.validated_data
+        updated_req = TransitionService.execute(
+            request_id=pk,
+            action=data["action"],
+            actor=request.user,
+            expected_status=data["expected_status"],
+            payload={
+                "note": data.get("note", ""),
+                "priority": data.get("priority"),
+            },
+        )
+
+        resp_serializer = MaintenanceRequestDetailSerializer(
+            updated_req,
+            context={"request": request},
+        )
+        return Response(resp_serializer.data, status=status.HTTP_200_OK)
+
