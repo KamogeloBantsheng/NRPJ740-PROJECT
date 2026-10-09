@@ -9,6 +9,7 @@ import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { ResidentRequestsPage } from "./pages/ResidentRequestsPage";
 import { SubmitRequestPage } from "./pages/SubmitRequestPage";
 import { RequestDetailPage } from "./pages/RequestDetailPage";
+import { SupervisorTriagePage } from "./pages/SupervisorTriagePage";
 import {
   ForbiddenPage,
   NotFoundPage,
@@ -93,11 +94,7 @@ export function App() {
                   path="/triage"
                   element={
                     <ProtectedRoute allowedRoles={["SUPERVISOR"]}>
-                      <RoleHomeView
-                        title="Supervisor Triage & Dispatch Queue"
-                        roleDescription="Supervisors evaluate incoming requests, assign priority, assign/reassign technicians, and verify completed repairs."
-                        nextSliceName="Slice 3: Triage (SCR-06) & Slice 4: Assign (SCR-07)"
-                      />
+                      <SupervisorTriagePage />
                     </ProtectedRoute>
                   }
                 />

@@ -1153,3 +1153,223 @@ body {
   font-size: 0.875rem;
   color: var(--color-text-primary);
 }
+
+/* ==========================================================================
+   Slice 3: Supervisor Triage Queue Styles (SCR-06)
+   ========================================================================== */
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.metric-card {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.metric-label {
+  font-size: 0.825rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.metric-value {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--color-text-primary);
+  line-height: 1.1;
+}
+
+.metric-value.metric-accent {
+  color: var(--color-primary);
+}
+
+.metric-value.metric-warning {
+  color: #d97706;
+}
+
+.metric-hint {
+  font-size: 0.775rem;
+  color: var(--color-text-muted);
+}
+
+.filter-toolbar-card {
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.status-tab-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.status-tab {
+  background: #f1f5f9;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.875rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.status-tab:hover {
+  background: #e2e8f0;
+  color: var(--color-text-primary);
+}
+
+.status-tab.tab-active {
+  background: var(--color-primary);
+  color: #ffffff;
+  border-color: var(--color-primary);
+}
+
+.filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.filter-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 180px;
+}
+
+.filter-item.search-filter {
+  flex: 2;
+  min-width: 240px;
+}
+
+.reset-filter-item {
+  flex: 0 0 auto;
+  min-width: auto;
+}
+
+.filter-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.table-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.triage-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.875rem;
+}
+
+.triage-table th {
+  background: #f8fafc;
+  padding: 0.875rem 1rem;
+  font-size: 0.775rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.triage-table td {
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.triage-table-row:hover {
+  background: #f8fafc;
+}
+
+.tracking-cell {
+  font-weight: 700;
+}
+
+.tracking-link {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.tracking-link:hover {
+  text-decoration: underline;
+}
+
+.resident-cell {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.location-tag {
+  display: inline-block;
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.category-pill {
+  display: inline-block;
+  background: #f3e8ff;
+  color: #7e22ce;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.description-cell {
+  max-width: 280px;
+}
+
+.description-text {
+  margin: 0;
+  font-size: 0.825rem;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.date-cell {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.action-cell {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.triage-btn {
+  text-decoration: none;
+}
+

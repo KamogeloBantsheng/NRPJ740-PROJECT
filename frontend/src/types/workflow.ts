@@ -41,8 +41,16 @@ export interface MaintenanceRequestSummary {
   location_floor: number;
   location_kind: "ROOM" | "COMMON_AREA";
   description_snippet: string;
+  resident_name?: string | null;
   created_at: string;
   closed_at: string | null;
+}
+
+export interface TransitionPayload {
+  action: string;
+  expected_status: RequestStatus;
+  note?: string;
+  priority?: Priority | null;
 }
 
 export interface TimelineEvent {
