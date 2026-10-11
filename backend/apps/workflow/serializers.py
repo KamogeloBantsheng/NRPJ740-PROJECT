@@ -3,11 +3,11 @@
 
 from rest_framework import serializers
 
-from apps.accounts.models import Role
+from apps.accounts.models import Role, User
 from apps.audit.models import AuditEvent
 from apps.audit.services import AuditService
 from apps.locations.models import FaultCategory, Location
-from apps.workflow.models import MaintenanceRequest, Priority
+from apps.workflow.models import MaintenanceRequest, Priority, WorkOrder
 
 
 class TransitionExecuteSerializer(serializers.Serializer):
@@ -18,6 +18,11 @@ class TransitionExecuteSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default="")
     priority = serializers.ChoiceField(
         choices=Priority.choices,
+        required=False,
+        allow_null=True,
+        default=None,
+    )
+    technician_id = serializers.IntegerField(
         required=False,
         allow_null=True,
         default=None,
@@ -75,6 +80,46 @@ class RequestTimelineEventSerializer(serializers.ModelSerializer):
         return obj.actor.full_name if obj.actor else "System"
 
 
+class TechnicianItemSerializer(serializers.ModelSerializer):
+    """Active technician listing with current active task workload for dispatch (SCR-07)."""
+
+    active_tasks_count = serializers.IntegerField(read_only=True, default=0)
+
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "full_name",
+            "email",
+            "is_active",
+            "active_tasks_count",
+        )
+
+
+class WorkOrderSerializer(serializers.ModelSerializer):
+    """Work order assignment detail (Table 5.7)."""
+
+    technician_name = serializers.CharField(source="technician.full_name", read_only=True)
+    technician_email = serializers.CharField(source="technician.email", read_only=True)
+    assigned_by_name = serializers.CharField(source="assigned_by.full_name", read_only=True)
+
+    class Meta:
+        model = WorkOrder
+        fields = (
+            "id",
+            "request_id",
+            "technician_id",
+            "technician_name",
+            "technician_email",
+            "assigned_by_id",
+            "assigned_by_name",
+            "assigned_at",
+            "ended_at",
+            "end_reason",
+            "is_active",
+        )
+
+
 class MaintenanceRequestListSerializer(serializers.ModelSerializer):
     """Compact summary serializer for request queue and list views (SCR-03)."""
 
@@ -86,6 +131,7 @@ class MaintenanceRequestListSerializer(serializers.ModelSerializer):
     location_kind = serializers.CharField(source="location.kind", read_only=True)
     description_snippet = serializers.SerializerMethodField()
     resident_name = serializers.SerializerMethodField()
+    assigned_technician_name = serializers.SerializerMethodField()
 
     class Meta:
         model = MaintenanceRequest
@@ -101,6 +147,7 @@ class MaintenanceRequestListSerializer(serializers.ModelSerializer):
             "location_kind",
             "description_snippet",
             "resident_name",
+            "assigned_technician_name",
             "created_at",
             "closed_at",
         )
@@ -116,14 +163,20 @@ class MaintenanceRequestListSerializer(serializers.ModelSerializer):
             return None
         return obj.resident.full_name
 
+    def get_assigned_technician_name(self, obj: MaintenanceRequest) -> str | None:
+        wo = obj.work_orders.filter(ended_at__isnull=True).select_related("technician").first()
+        return wo.technician.full_name if wo else None
+
 
 class MaintenanceRequestDetailSerializer(serializers.ModelSerializer):
-    """Full detail serializer with nested resident, location, category, and timeline (SCR-05)."""
+    """Full detail serializer with nested resident, location, category, work order, and timeline (SCR-05)."""
 
     tracking_number = serializers.CharField(read_only=True)
     resident = serializers.SerializerMethodField()
     location = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
+    active_work_order = serializers.SerializerMethodField()
+    work_orders = serializers.SerializerMethodField()
     timeline = serializers.SerializerMethodField()
 
     class Meta:
@@ -141,6 +194,8 @@ class MaintenanceRequestDetailSerializer(serializers.ModelSerializer):
             "resident",
             "location",
             "category",
+            "active_work_order",
+            "work_orders",
             "timeline",
         )
 
@@ -171,6 +226,16 @@ class MaintenanceRequestDetailSerializer(serializers.ModelSerializer):
             "id": obj.category_id,
             "name": obj.category.name,
         }
+
+    def get_active_work_order(self, obj: MaintenanceRequest) -> dict | None:
+        wo = obj.work_orders.filter(ended_at__isnull=True).select_related("technician", "assigned_by").first()
+        if not wo:
+            return None
+        return WorkOrderSerializer(wo, context=self.context).data
+
+    def get_work_orders(self, obj: MaintenanceRequest) -> list[dict]:
+        wos = obj.work_orders.select_related("technician", "assigned_by").order_by("-assigned_at")
+        return WorkOrderSerializer(wos, many=True, context=self.context).data
 
     def get_timeline(self, obj: MaintenanceRequest) -> list[dict]:
         events = AuditService.get_request_history(obj.id)

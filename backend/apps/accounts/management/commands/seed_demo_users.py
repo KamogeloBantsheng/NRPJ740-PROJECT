@@ -23,6 +23,13 @@ DEMO_USERS = [
         "requires_residence": False,
     },
     {
+        "email": "technician2@spu.ac.za",
+        "full_name": "Demo Technician 2",
+        "role": Role.TECHNICIAN,
+        "student_number": None,
+        "requires_residence": False,
+    },
+    {
         "email": "supervisor@spu.ac.za",
         "full_name": "Demo Supervisor",
         "role": Role.SUPERVISOR,

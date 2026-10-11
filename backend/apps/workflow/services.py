@@ -11,7 +11,14 @@ from apps.accounts.models import Role, User
 from apps.audit.models import AuditAction
 from apps.audit.services import AuditService
 from apps.locations.models import FaultCategory, Location
-from apps.workflow.models import MaintenanceRequest, Priority, RequestStatus, TransitionRule
+from apps.workflow.models import (
+    EndReason,
+    MaintenanceRequest,
+    Priority,
+    RequestStatus,
+    TransitionRule,
+    WorkOrder,
+)
 
 
 class TransitionService:
@@ -201,7 +208,106 @@ class TransitionService:
                     )
                 req.priority = priority
 
-            # 5. Apply state changes
+            # 5. Work order handling under NFR-04 lock ordering (Request row locked first, Technician row locked second)
+            work_order_id = None
+            audit_details = payload.get("details", {}).copy()
+
+            if action == "ASSIGN":
+                tech_id = payload.get("technician_id")
+                if not tech_id:
+                    raise ValidationException(
+                        "Technician ID is required for assignment.",
+                        fields={"technician_id": ["Please select a technician."]},
+                    )
+
+                tech = (
+                    User.objects.select_for_update()
+                    .filter(id=tech_id, role=Role.TECHNICIAN)
+                    .first()
+                )
+                if not tech:
+                    raise ValidationException(
+                        "Selected technician does not exist.",
+                        fields={"technician_id": ["Technician not found."]},
+                    )
+                if not tech.is_active:
+                    raise ValidationException(
+                        "Cannot assign request to a deactivated technician.",
+                        fields={"technician_id": ["Technician account is deactivated."]},
+                    )
+
+                existing_active = WorkOrder.objects.filter(request=req, ended_at__isnull=True).first()
+                if existing_active:
+                    raise ConflictException("Request already has an active work order.")
+
+                wo = WorkOrder.objects.create(
+                    request=req,
+                    technician=tech,
+                    assigned_by=actor,
+                )
+                work_order_id = wo.id
+                audit_details.update({
+                    "technician_id": tech.id,
+                    "technician_name": tech.full_name,
+                })
+
+            elif action == "REASSIGN":
+                tech_id = payload.get("technician_id")
+                if not tech_id:
+                    raise ValidationException(
+                        "Technician ID is required for reassignment.",
+                        fields={"technician_id": ["Please select a technician to reassign to."]},
+                    )
+
+                new_tech = (
+                    User.objects.select_for_update()
+                    .filter(id=tech_id, role=Role.TECHNICIAN)
+                    .first()
+                )
+                if not new_tech:
+                    raise ValidationException(
+                        "Selected technician does not exist.",
+                        fields={"technician_id": ["Technician not found."]},
+                    )
+                if not new_tech.is_active:
+                    raise ValidationException(
+                        "Cannot reassign request to a deactivated technician.",
+                        fields={"technician_id": ["Technician account is deactivated."]},
+                    )
+
+                current_wo = (
+                    WorkOrder.objects.select_for_update()
+                    .filter(request=req, ended_at__isnull=True)
+                    .first()
+                )
+                if not current_wo:
+                    raise ConflictException("No active work order found to reassign.")
+
+                if current_wo.technician_id == new_tech.id:
+                    raise ValidationException(
+                        "Must reassign to a different active technician.",
+                        fields={"technician_id": ["Selected technician is already assigned to this request."]},
+                    )
+
+                current_wo.ended_at = timezone.now()
+                current_wo.end_reason = EndReason.REASSIGNED
+                current_wo.save()
+
+                new_wo = WorkOrder.objects.create(
+                    request=req,
+                    technician=new_tech,
+                    assigned_by=actor,
+                )
+                work_order_id = new_wo.id
+                audit_details.update({
+                    "previous_technician_id": current_wo.technician_id,
+                    "previous_technician_name": current_wo.technician.full_name,
+                    "new_technician_id": new_tech.id,
+                    "new_technician_name": new_tech.full_name,
+                    "reason": trimmed_note,
+                })
+
+            # 6. Apply state changes
             req.status = new_status
 
             # Handle terminal closure timestamp
@@ -212,15 +318,16 @@ class TransitionService:
 
             req.save()
 
-            # 6. Record append-only audit event
+            # 7. Record append-only audit event
             AuditService.record(
                 action=rule.audit_action,
                 actor=actor,
                 request_id=req.id,
+                work_order_id=work_order_id,
                 from_status=old_status,
                 to_status=new_status,
                 note=trimmed_note if trimmed_note else None,
-                details=payload.get("details", {}),
+                details=audit_details,
             )
 
             return req

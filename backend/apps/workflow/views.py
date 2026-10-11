@@ -3,13 +3,14 @@
 import uuid
 
 from config.exceptions import ForbiddenException, NotFoundException, ValidationException
+from django.db.models import Count, Q
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.models import Role
+from apps.accounts.models import Role, User
 from apps.audit.services import AuditService
 from apps.locations.models import FaultCategory, Location
 from apps.workflow.models import MaintenanceRequest
@@ -19,6 +20,7 @@ from apps.workflow.serializers import (
     MaintenanceRequestListSerializer,
     RequestTimelineEventSerializer,
     SubmitRequestSerializer,
+    TechnicianItemSerializer,
     TransitionExecuteSerializer,
 )
 from apps.workflow.services import TransitionService
@@ -167,6 +169,7 @@ class RequestTransitionView(APIView):
             payload={
                 "note": data.get("note", ""),
                 "priority": data.get("priority"),
+                "technician_id": data.get("technician_id"),
             },
         )
 
@@ -175,4 +178,27 @@ class RequestTransitionView(APIView):
             context={"request": request},
         )
         return Response(resp_serializer.data, status=status.HTTP_200_OK)
+
+
+class TechnicianListView(APIView):
+    """List active technicians with workload counts for supervisor dispatch (SCR-07, FR-10, FR-11)."""
+
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request: Request) -> Response:
+        if request.user.role not in (Role.SUPERVISOR, Role.ADMIN):
+            raise ForbiddenException("Only supervisors and admins can view technician dispatch availability.")
+
+        technicians = (
+            User.objects.filter(role=Role.TECHNICIAN, is_active=True)
+            .annotate(
+                active_tasks_count=Count(
+                    "work_orders",
+                    filter=Q(work_orders__ended_at__isnull=True),
+                )
+            )
+            .order_by("full_name")
+        )
+        serializer = TechnicianItemSerializer(technicians, many=True)
+        return Response(serializer.data)
 
