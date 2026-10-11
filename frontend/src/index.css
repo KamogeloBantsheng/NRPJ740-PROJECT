@@ -1373,3 +1373,210 @@ body {
   text-decoration: none;
 }
 
+/* ==========================================================================
+   Slice 3: Clarification Thread (FR-07) & Triage Action Controls (FR-09)
+   ========================================================================== */
+
+/* Clarification Card */
+.clarification-card {
+  border-left: 4px solid #d97706;
+  margin-bottom: 1.5rem;
+  background: #fffbeb;
+}
+
+.clarification-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.clarification-icon {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.clarification-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #92400e;
+  margin: 0;
+}
+
+.clarification-subtitle {
+  font-size: 0.85rem;
+  color: #78350f;
+  margin-top: 0.2rem;
+}
+
+.supervisor-question-box {
+  background: #ffffff;
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-md);
+  padding: 0.875rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.question-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #b45309;
+  margin-bottom: 0.25rem;
+}
+
+.question-text {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin: 0;
+  font-style: italic;
+}
+
+.clarification-form .textarea-input {
+  background: #ffffff;
+}
+
+/* Supervisor Triage Controls */
+.triage-control-card {
+  border-top: 4px solid var(--color-primary);
+  margin-bottom: 1.5rem;
+}
+
+.triage-control-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.status-note {
+  display: inline-block;
+  background: #ecfdf5;
+  color: #047857;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.825rem;
+  font-weight: 600;
+}
+
+.triage-buttons-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+/* Action Button Variants */
+.btn-outline-primary {
+  background: transparent;
+  border: 1.5px solid var(--color-primary);
+  color: var(--color-primary);
+}
+
+.btn-outline-primary:hover {
+  background: #f0fdf4;
+}
+
+.btn-warning {
+  background: #d97706;
+  color: #ffffff;
+  border: 1px solid transparent;
+}
+
+.btn-warning:hover {
+  background: #b45309;
+}
+
+.btn-outline-warning {
+  background: transparent;
+  border: 1.5px solid #d97706;
+  color: #d97706;
+}
+
+.btn-outline-warning:hover {
+  background: #fffbeb;
+}
+
+.btn-danger {
+  background: #dc2626;
+  color: #ffffff;
+  border: 1px solid transparent;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+}
+
+.btn-outline-danger {
+  background: transparent;
+  border: 1.5px solid #dc2626;
+  color: #dc2626;
+}
+
+.btn-outline-danger:hover {
+  background: #fef2f2;
+}
+
+/* Triage Drawer */
+.triage-drawer {
+  margin-top: 1.25rem;
+  padding: 1.25rem;
+  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  animation: fadeIn 0.2s ease;
+}
+
+.drawer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.drawer-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.drawer-desc {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.drawer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.highlight-status {
+  display: inline-block;
+  background: #fef3c7;
+  color: #92400e;
+  padding: 0.15rem 0.4rem;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
