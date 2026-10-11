@@ -182,3 +182,90 @@ class TransitionRule(models.Model):
 
     def __str__(self) -> str:
         return f"{self.transition_id}: {self.action} ({self.from_status} -> {self.to_status})"
+
+
+class EndReason(models.TextChoices):
+    """Enumeration of work order termination reasons (Table 5.5, 5.7)."""
+
+    REASSIGNED = "REASSIGNED", "Reassigned"
+    COMPLETED = "COMPLETED", "Completed"
+
+
+class WorkOrder(models.Model):
+    """Assignment of a maintenance request to a technician (Table 5.7).
+
+    A work order has NO status of its own (CH-05, AGENT_BRIEF section 2).
+    Its lifecycle is governed purely by ended_at and end_reason.
+    At most one active work order can exist per request (BR-01, partial unique index).
+    """
+
+    id = models.BigAutoField(primary_key=True)
+    request = models.ForeignKey(
+        "workflow.MaintenanceRequest",
+        on_delete=models.RESTRICT,
+        related_name="work_orders",
+        db_column="request_id",
+    )
+    technician = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.RESTRICT,
+        related_name="work_orders",
+        db_column="technician_id",
+    )
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.RESTRICT,
+        related_name="assigned_work_orders",
+        db_column="assigned_by_id",
+    )
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    end_reason = models.CharField(
+        max_length=12,
+        choices=EndReason.choices,
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        db_table = "work_orders"
+        ordering = ("-assigned_at",)
+        constraints = (
+            models.CheckConstraint(
+                condition=models.Q(end_reason__in=EndReason.values) | models.Q(end_reason__isnull=True),
+                name="check_end_reason_in_choices",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    (models.Q(ended_at__isnull=True) & models.Q(end_reason__isnull=True))
+                    | (models.Q(ended_at__isnull=False) & models.Q(end_reason__isnull=False))
+                ),
+                name="check_end_reason_null_match",
+            ),
+            models.UniqueConstraint(
+                fields=["request"],
+                condition=models.Q(ended_at__isnull=True),
+                name="unique_active_work_order_per_request",
+            ),
+        )
+        indexes = (
+            models.Index(
+                fields=["technician"],
+                condition=models.Q(ended_at__isnull=True),
+                name="idx_active_wo_technician",
+            ),
+            models.Index(
+                fields=["request", "-assigned_at"],
+                name="idx_wo_request_assigned",
+            ),
+        )
+
+    @property
+    def is_active(self) -> bool:
+        """True if the work order is currently active (not ended)."""
+        return self.ended_at is None
+
+    def __str__(self) -> str:
+        status_label = "ACTIVE" if self.is_active else f"ENDED ({self.end_reason})"
+        return f"WO-{self.id} for {self.request.tracking_number} -> {self.technician.full_name} [{status_label}]"
+
