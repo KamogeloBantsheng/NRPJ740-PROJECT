@@ -9,6 +9,7 @@ import type {
   MaintenanceRequestDetail,
   MaintenanceRequestSummary,
   SubmitRequestPayload,
+  TechnicianItem,
   TimelineEvent,
   TransitionPayload,
 } from "../types/workflow";
@@ -64,5 +65,9 @@ export const workflowApi = {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  },
+
+  getTechnicians: async (): Promise<TechnicianItem[]> => {
+    return apiClient<TechnicianItem[]>("/api/technicians/");
   },
 };

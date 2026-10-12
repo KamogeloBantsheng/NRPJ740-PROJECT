@@ -40,7 +40,32 @@ export function Navbar() {
               )}
             </div>
 
-            <nav className="navbar-actions" aria-label="User account actions">
+            <nav className="navbar-actions" aria-label="Navigation and account actions">
+              {user.role === "SUPERVISOR" && (
+                <>
+                  <Link to="/triage" className="nav-link">
+                    Triage Queue
+                  </Link>
+                  <Link to="/dispatch" className="nav-link">
+                    Dispatch
+                  </Link>
+                </>
+              )}
+              {user.role === "RESIDENT" && (
+                <>
+                  <Link to="/requests" className="nav-link">
+                    My Requests
+                  </Link>
+                  <Link to="/requests/new" className="nav-link">
+                    Report Fault
+                  </Link>
+                </>
+              )}
+              {user.role === "TECHNICIAN" && (
+                <Link to="/work" className="nav-link">
+                  My Work
+                </Link>
+              )}
               <Link to="/change-password" className="nav-link">
                 Password
               </Link>

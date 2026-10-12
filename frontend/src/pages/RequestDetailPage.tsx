@@ -13,7 +13,7 @@ import { useAuth } from "../context/useAuth";
 import { StatusBadge } from "../components/StatusBadge";
 import type { Priority, RequestStatus, TransitionPayload } from "../types/workflow";
 
-type TriageMode = "NONE" | "APPROVE" | "CLARIFY" | "REJECT";
+type TriageMode = "NONE" | "APPROVE" | "CLARIFY" | "REJECT" | "ASSIGN" | "REASSIGN";
 
 export function RequestDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -26,6 +26,7 @@ export function RequestDetailPage() {
   // Triage form state
   const [triageMode, setTriageMode] = useState<TriageMode>("NONE");
   const [priority, setPriority] = useState<Priority>("MEDIUM");
+  const [selectedTechId, setSelectedTechId] = useState<number | "">("");
   const [actionNote, setActionNote] = useState<string>("");
   const [residentResponse, setResidentResponse] = useState<string>("");
   const [actionError, setActionError] = useState<string | null>(null);
@@ -43,13 +44,22 @@ export function RequestDetailPage() {
     enabled: Boolean(id),
   });
 
+  const { data: technicians = [] } = useQuery({
+    queryKey: ["technicians"],
+    queryFn: () => workflowApi.getTechnicians(),
+    enabled: Boolean(user?.role === "SUPERVISOR"),
+  });
+
   const transitionMutation = useMutation({
     mutationFn: (payload: TransitionPayload) => workflowApi.transitionRequest(id!, payload),
     onSuccess: (updated) => {
       queryClient.setQueryData(["requests", "detail", id], updated);
       queryClient.invalidateQueries({ queryKey: ["requests"] });
       queryClient.invalidateQueries({ queryKey: ["supervisor-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["dispatch-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["technicians"] });
       setTriageMode("NONE");
+      setSelectedTechId("");
       setActionNote("");
       setResidentResponse("");
       setActionError(null);
@@ -148,6 +158,41 @@ export function RequestDetailPage() {
       transitionMutation.mutate({
         action: "REQUEST_CLARIFICATION",
         expected_status: req.status,
+        note: trimmed,
+      });
+    } else if (triageMode === "ASSIGN") {
+      if (!selectedTechId) {
+        setActionError("Please select an active technician for assignment.");
+        return;
+      }
+      transitionMutation.mutate({
+        action: "ASSIGN",
+        expected_status: req.status,
+        technician_id: Number(selectedTechId),
+        note: trimmed || undefined,
+      });
+    } else if (triageMode === "REASSIGN") {
+      if (!selectedTechId) {
+        setActionError("Please select a new technician for reassignment.");
+        return;
+      }
+      if (trimmed.length < 10) {
+        setActionError("Reassignment reason must be at least 10 characters long (BR-02).");
+        return;
+      }
+      const selectedTech = technicians.find((t) => t.id === Number(selectedTechId));
+      if (
+        selectedTech &&
+        req.active_work_order &&
+        selectedTech.id === req.active_work_order.technician_id
+      ) {
+        setActionError("Cannot reassign to the same technician. Please select a different technician (BR-01).");
+        return;
+      }
+      transitionMutation.mutate({
+        action: "REASSIGN",
+        expected_status: req.status,
+        technician_id: Number(selectedTechId),
         note: trimmed,
       });
     } else if (triageMode === "REJECT") {
@@ -267,6 +312,82 @@ export function RequestDetailPage() {
         </div>
       </div>
 
+      {/* FR-10, FR-11: Work Order Assignment Banner */}
+      {req.active_work_order && (
+        <div className="card work-order-card">
+          <div className="work-order-header">
+            <span className="work-order-icon">🔧</span>
+            <div>
+              <h2 className="work-order-title">Active Work Order Assignment</h2>
+              <p className="work-order-subtitle">
+                Assigned to qualified technician for repair resolution (FR-10, Table 5.7)
+              </p>
+            </div>
+          </div>
+
+          <div className="work-order-grid">
+            <div className="meta-item">
+              <span className="meta-label">Assigned Technician</span>
+              <span className="meta-value tech-highlight">
+                {req.active_work_order.technician_name} ({req.active_work_order.technician_email})
+              </span>
+            </div>
+
+            <div className="meta-item">
+              <span className="meta-label">Assigned By</span>
+              <span className="meta-value">{req.active_work_order.assigned_by_name}</span>
+            </div>
+
+            <div className="meta-item">
+              <span className="meta-label">Assigned Timestamp</span>
+              <span className="meta-value">
+                {new Date(req.active_work_order.assigned_at).toLocaleString("en-ZA", {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Prior Work Orders (Reassignment Audit Trail) */}
+      {req.work_orders && req.work_orders.filter((wo) => !wo.is_active).length > 0 && (
+        <div className="card prior-work-orders-card">
+          <h3 className="prior-orders-title">
+            Work Order History ({req.work_orders.filter((wo) => !wo.is_active).length} prior)
+          </h3>
+          <div className="prior-orders-list">
+            {req.work_orders
+              .filter((wo) => !wo.is_active)
+              .map((wo) => (
+                <div key={wo.id} className="prior-order-item">
+                  <div>
+                    <strong>{wo.technician_name}</strong> ({wo.technician_email})
+                  </div>
+                  <div className="prior-order-meta">
+                    <span className="end-reason-tag">Status: {wo.end_reason}</span>
+                    <span className="text-muted">
+                      Ended:{" "}
+                      {wo.ended_at
+                        ? new Date(wo.ended_at).toLocaleString("en-ZA", {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "—"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* FR-07: Interactive Clarification Box for Resident Owner */}
       {req.status === "NEEDS_CLARIFICATION" && isResidentOwner && (
         <div className="card clarification-card">
@@ -345,218 +466,437 @@ export function RequestDetailPage() {
         </div>
       )}
 
-      {/* FR-09: Supervisor Triage Actions Card (SCR-06, SCR-05) */}
-      {isSupervisor && (req.status === "SUBMITTED" || req.status === "APPROVED") && (
-        <div className="card triage-control-card">
-          <div className="triage-control-header">
-            <div>
-              <h2 className="section-title">Supervisor Triage Actions (FR-09)</h2>
-              <p className="section-subtitle">
-                Evaluate this fault report, assign priority for technician dispatch, request clarification, or reject.
-              </p>
+      {/* FR-09, FR-10, FR-11: Supervisor Triage & Dispatch Actions Card (SCR-06, SCR-07, SCR-05) */}
+      {isSupervisor &&
+        ["SUBMITTED", "APPROVED", "ASSIGNED", "IN_PROGRESS", "REOPENED"].includes(req.status) && (
+          <div className="card triage-control-card">
+            <div className="triage-control-header">
+              <div>
+                <h2 className="section-title">
+                  {req.status === "SUBMITTED"
+                    ? "Supervisor Triage Actions (FR-09)"
+                    : req.status === "APPROVED"
+                    ? "Supervisor Dispatch Actions (FR-10, SCR-07)"
+                    : "Supervisor Reassignment Controls (FR-11, SCR-07)"}
+                </h2>
+                <p className="section-subtitle">
+                  {req.status === "SUBMITTED"
+                    ? "Evaluate this fault report, assign priority for technician dispatch, request clarification, or reject."
+                    : req.status === "APPROVED"
+                    ? "Assign this approved fault to a qualified active technician (FR-10)."
+                    : "Reassign this active work order to another technician with mandatory reason (FR-11)."}
+                </p>
+              </div>
+              {req.status === "APPROVED" && (
+                <span className="status-note">
+                  ✓ Request Approved. Ready for technician dispatch.
+                </span>
+              )}
+              {["ASSIGNED", "IN_PROGRESS", "REOPENED"].includes(req.status) && req.active_work_order && (
+                <span className="status-note">
+                  🔧 Assigned to {req.active_work_order.technician_name}
+                </span>
+              )}
             </div>
-            {req.status === "APPROVED" && (
-              <span className="status-note">
-                ✓ Request Approved. Ready for dispatch in Slice 4.
-              </span>
-            )}
-          </div>
 
-          {/* Action Button Row */}
-          <div className="triage-buttons-row">
-            {req.status === "SUBMITTED" && (
-              <>
+            {/* Action Button Row */}
+            <div className="triage-buttons-row">
+              {req.status === "SUBMITTED" && (
+                <>
+                  <button
+                    type="button"
+                    className={`btn ${triageMode === "APPROVE" ? "btn-primary" : "btn-outline-primary"}`}
+                    onClick={() => setTriageMode(triageMode === "APPROVE" ? "NONE" : "APPROVE")}
+                  >
+                    ✓ Approve Fault (T4)
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${triageMode === "CLARIFY" ? "btn-warning" : "btn-outline-warning"}`}
+                    onClick={() => setTriageMode(triageMode === "CLARIFY" ? "NONE" : "CLARIFY")}
+                  >
+                    ❓ Request Clarification (T2)
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${triageMode === "REJECT" ? "btn-danger" : "btn-outline-danger"}`}
+                    onClick={() => setTriageMode(triageMode === "REJECT" ? "NONE" : "REJECT")}
+                  >
+                    ✕ Reject Request (T5)
+                  </button>
+                </>
+              )}
+
+              {req.status === "APPROVED" && (
+                <>
+                  <button
+                    type="button"
+                    className={`btn ${triageMode === "ASSIGN" ? "btn-primary" : "btn-outline-primary"}`}
+                    onClick={() => {
+                      if (triageMode !== "ASSIGN") {
+                        setSelectedTechId(technicians.length > 0 ? technicians[0].id : "");
+                        setActionNote("");
+                      }
+                      setTriageMode(triageMode === "ASSIGN" ? "NONE" : "ASSIGN");
+                    }}
+                    disabled={technicians.length === 0}
+                    title={
+                      technicians.length === 0
+                        ? "No active technicians available"
+                        : "Assign to active technician"
+                    }
+                  >
+                    🔧 Assign Technician (T6)
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${triageMode === "REJECT" ? "btn-danger" : "btn-outline-danger"}`}
+                    onClick={() => setTriageMode(triageMode === "REJECT" ? "NONE" : "REJECT")}
+                  >
+                    ✕ Reject Request (T5)
+                  </button>
+                </>
+              )}
+
+              {["ASSIGNED", "IN_PROGRESS", "REOPENED"].includes(req.status) && (
                 <button
                   type="button"
-                  className={`btn ${triageMode === "APPROVE" ? "btn-primary" : "btn-outline-primary"}`}
-                  onClick={() => setTriageMode(triageMode === "APPROVE" ? "NONE" : "APPROVE")}
+                  className={`btn ${triageMode === "REASSIGN" ? "btn-warning" : "btn-outline-warning"}`}
+                  onClick={() => {
+                    if (triageMode !== "REASSIGN") {
+                      const otherTech = technicians.find(
+                        (t) => t.id !== req.active_work_order?.technician_id
+                      );
+                      setSelectedTechId(otherTech ? otherTech.id : "");
+                      setActionNote("");
+                    }
+                    setTriageMode(triageMode === "REASSIGN" ? "NONE" : "REASSIGN");
+                  }}
+                  disabled={technicians.length < 2}
+                  title={
+                    technicians.length < 2
+                      ? "Requires at least 2 active technicians to reassign"
+                      : "Reassign work order to another technician"
+                  }
                 >
-                  ✓ Approve Fault (T4)
+                  🔄 Reassign Technician (T7)
                 </button>
-                <button
-                  type="button"
-                  className={`btn ${triageMode === "CLARIFY" ? "btn-warning" : "btn-outline-warning"}`}
-                  onClick={() => setTriageMode(triageMode === "CLARIFY" ? "NONE" : "CLARIFY")}
-                >
-                  ❓ Request Clarification (T2)
-                </button>
-              </>
-            )}
-            <button
-              type="button"
-              className={`btn ${triageMode === "REJECT" ? "btn-danger" : "btn-outline-danger"}`}
-              onClick={() => setTriageMode(triageMode === "REJECT" ? "NONE" : "REJECT")}
-            >
-              ✕ Reject Request (T5)
-            </button>
-          </div>
-
-          {/* Expandable Action Drawer */}
-          {triageMode !== "NONE" && (
-            <div className="triage-drawer">
-              <form onSubmit={handleTriageExecute} className="triage-form">
-                {triageMode === "APPROVE" && (
-                  <div className="drawer-section">
-                    <h3 className="drawer-title">Approve Maintenance Request (T4)</h3>
-                    <p className="drawer-desc">
-                      Assigning a priority is mandatory (BR-08). Once approved, this request can be dispatched to an active technician.
-                    </p>
-
-                    <div className="form-group">
-                      <label htmlFor="triage-priority" className="form-label">
-                        Dispatch Priority <span className="required">*</span>
-                      </label>
-                      <select
-                        id="triage-priority"
-                        value={priority}
-                        onChange={(e) => setPriority(e.target.value as Priority)}
-                        className="select-input"
-                        required
-                      >
-                        <option value="LOW">LOW &bull; Routine maintenance</option>
-                        <option value="MEDIUM">MEDIUM &bull; Normal resident request</option>
-                        <option value="HIGH">HIGH &bull; Urgent repair needed</option>
-                        <option value="CRITICAL">CRITICAL &bull; Emergency / safety concern</option>
-                      </select>
-                    </div>
-
-                    <div className="form-group">
-                      <label htmlFor="approve-note" className="form-label">
-                        Approval Notes (Optional)
-                      </label>
-                      <textarea
-                        id="approve-note"
-                        rows={3}
-                        value={actionNote}
-                        onChange={(e) => setActionNote(e.target.value)}
-                        placeholder="Optional internal supervisor dispatch notes..."
-                        className="textarea-input"
-                      />
-                    </div>
-
-                    <div className="drawer-actions">
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => setTriageMode("NONE")}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="btn btn-primary"
-                        disabled={transitionMutation.isPending}
-                      >
-                        {transitionMutation.isPending ? "Approving..." : "Confirm Approval"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {triageMode === "CLARIFY" && (
-                  <div className="drawer-section">
-                    <h3 className="drawer-title">Request Clarification from Resident (T2)</h3>
-                    <p className="drawer-desc">
-                      Moves request to <span className="highlight-status">NEEDS_CLARIFICATION</span>. The resident will be prompted to answer before the request can proceed.
-                    </p>
-
-                    <div className="form-group">
-                      <div className="label-row">
-                        <label htmlFor="clarify-note" className="form-label">
-                          Question / Details Needed <span className="required">*</span>
-                        </label>
-                        <span
-                          className={`char-counter ${
-                            actionNote.trim().length >= 10 ? "counter-valid" : "counter-low"
-                          }`}
-                        >
-                          {actionNote.trim().length} chars (min 10)
-                        </span>
-                      </div>
-                      <textarea
-                        id="clarify-note"
-                        rows={3}
-                        value={actionNote}
-                        onChange={(e) => setActionNote(e.target.value)}
-                        placeholder="State what information is missing (e.g. 'Is the water supply leaking from under the sink or from the main wall tap?')..."
-                        className="textarea-input"
-                        required
-                      />
-                    </div>
-
-                    <div className="drawer-actions">
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => setTriageMode("NONE")}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="btn btn-warning"
-                        disabled={transitionMutation.isPending || actionNote.trim().length < 10}
-                      >
-                        {transitionMutation.isPending ? "Sending Question..." : "Send Question to Resident"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {triageMode === "REJECT" && (
-                  <div className="drawer-section">
-                    <h3 className="drawer-title">Reject Maintenance Request (T5)</h3>
-                    <p className="drawer-desc text-danger">
-                      Rejection is final and terminal (BR-06). A mandatory explanation of at least 10 characters is required for audit recording.
-                    </p>
-
-                    <div className="form-group">
-                      <div className="label-row">
-                        <label htmlFor="reject-note" className="form-label">
-                          Mandatory Rejection Reason <span className="required">*</span>
-                        </label>
-                        <span
-                          className={`char-counter ${
-                            actionNote.trim().length >= 10 ? "counter-valid" : "counter-low"
-                          }`}
-                        >
-                          {actionNote.trim().length} chars (min 10)
-                        </span>
-                      </div>
-                      <textarea
-                        id="reject-note"
-                        rows={3}
-                        value={actionNote}
-                        onChange={(e) => setActionNote(e.target.value)}
-                        placeholder="Explain why this request is rejected (e.g. 'Duplicate report already logged as MR-000104' or 'Non-university personal appliance')..."
-                        className="textarea-input"
-                        required
-                      />
-                    </div>
-
-                    <div className="drawer-actions">
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => setTriageMode("NONE")}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="btn btn-danger"
-                        disabled={transitionMutation.isPending || actionNote.trim().length < 10}
-                      >
-                        {transitionMutation.isPending ? "Rejecting..." : "Confirm Rejection (Terminal)"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </form>
+              )}
             </div>
-          )}
-        </div>
-      )}
+
+            {/* Expandable Action Drawer */}
+            {triageMode !== "NONE" && (
+              <div className="triage-drawer">
+                <form onSubmit={handleTriageExecute} className="triage-form">
+                  {triageMode === "APPROVE" && (
+                    <div className="drawer-section">
+                      <h3 className="drawer-title">Approve Maintenance Request (T4)</h3>
+                      <p className="drawer-desc">
+                        Assigning a priority is mandatory (BR-08). Once approved, this request can be dispatched to an active technician.
+                      </p>
+
+                      <div className="form-group">
+                        <label htmlFor="triage-priority" className="form-label">
+                          Dispatch Priority <span className="required">*</span>
+                        </label>
+                        <select
+                          id="triage-priority"
+                          value={priority}
+                          onChange={(e) => setPriority(e.target.value as Priority)}
+                          className="select-input"
+                          required
+                        >
+                          <option value="LOW">LOW &bull; Routine maintenance</option>
+                          <option value="MEDIUM">MEDIUM &bull; Normal resident request</option>
+                          <option value="HIGH">HIGH &bull; Urgent repair needed</option>
+                          <option value="CRITICAL">CRITICAL &bull; Emergency / safety concern</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label htmlFor="approve-note" className="form-label">
+                          Approval Notes (Optional)
+                        </label>
+                        <textarea
+                          id="approve-note"
+                          rows={3}
+                          value={actionNote}
+                          onChange={(e) => setActionNote(e.target.value)}
+                          placeholder="Optional internal supervisor dispatch notes..."
+                          className="textarea-input"
+                        />
+                      </div>
+
+                      <div className="drawer-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => setTriageMode("NONE")}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="btn btn-primary"
+                          disabled={transitionMutation.isPending}
+                        >
+                          {transitionMutation.isPending ? "Approving..." : "Confirm Approval"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {triageMode === "ASSIGN" && (
+                    <div className="drawer-section">
+                      <h3 className="drawer-title">Assign Technician (T6)</h3>
+                      <p className="drawer-desc">
+                        Select an active technician to dispatch this maintenance fault (FR-10, Table 5.7).
+                      </p>
+
+                      <div className="form-group">
+                        <label htmlFor="triage-tech" className="form-label">
+                          Qualified Technician <span className="required">*</span>
+                        </label>
+                        <select
+                          id="triage-tech"
+                          value={selectedTechId}
+                          onChange={(e) => setSelectedTechId(Number(e.target.value))}
+                          className="select-input"
+                          required
+                        >
+                          <option value="" disabled>
+                            -- Select active technician --
+                          </option>
+                          {technicians.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.full_name} ({t.email}) &mdash; {t.active_tasks_count} active{" "}
+                              {t.active_tasks_count === 1 ? "task" : "tasks"}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="field-hint">
+                          Technician workloads are dynamically calculated from active work orders.
+                        </span>
+                      </div>
+
+                      <div className="form-group">
+                        <label htmlFor="assign-note" className="form-label">
+                          Dispatch Notes (Optional)
+                        </label>
+                        <textarea
+                          id="assign-note"
+                          rows={3}
+                          value={actionNote}
+                          onChange={(e) => setActionNote(e.target.value)}
+                          placeholder="Optional instructions or parts guidance..."
+                          className="textarea-input"
+                        />
+                      </div>
+
+                      <div className="drawer-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => setTriageMode("NONE")}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="btn btn-primary"
+                          disabled={transitionMutation.isPending || !selectedTechId}
+                        >
+                          {transitionMutation.isPending ? "Assigning..." : "Confirm Assignment (T6)"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {triageMode === "REASSIGN" && (
+                    <div className="drawer-section">
+                      <h3 className="drawer-title">Reassign Technician (T7)</h3>
+                      <p className="drawer-desc">
+                        Reassign this active repair to a different technician (FR-11). The previous work order will be closed with reason <span className="highlight-status">REASSIGNED</span>.
+                      </p>
+
+                      <div className="form-group">
+                        <label htmlFor="reassign-tech" className="form-label">
+                          New Technician <span className="required">*</span>
+                        </label>
+                        <select
+                          id="reassign-tech"
+                          value={selectedTechId}
+                          onChange={(e) => setSelectedTechId(Number(e.target.value))}
+                          className="select-input"
+                          required
+                        >
+                          <option value="" disabled>
+                            -- Select a different active technician --
+                          </option>
+                          {technicians.map((t) => {
+                            const isCurrent = t.id === req.active_work_order?.technician_id;
+                            return (
+                              <option key={t.id} value={t.id} disabled={isCurrent}>
+                                {t.full_name} ({t.email}) &mdash; {t.active_tasks_count} active{" "}
+                                {t.active_tasks_count === 1 ? "task" : "tasks"}
+                                {isCurrent ? " (Current Technician)" : ""}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <div className="label-row">
+                          <label htmlFor="reassign-note" className="form-label">
+                            Mandatory Reassignment Reason <span className="required">*</span>
+                          </label>
+                          <span
+                            className={`char-counter ${
+                              actionNote.trim().length >= 10 ? "counter-valid" : "counter-low"
+                            }`}
+                          >
+                            {actionNote.trim().length} chars (min 10)
+                          </span>
+                        </div>
+                        <textarea
+                          id="reassign-note"
+                          rows={3}
+                          value={actionNote}
+                          onChange={(e) => setActionNote(e.target.value)}
+                          placeholder="State the reason for reassignment (e.g. 'Technician reassigned to high-priority emergency pipe burst in Block A')..."
+                          className="textarea-input"
+                          required
+                        />
+                      </div>
+
+                      <div className="drawer-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => setTriageMode("NONE")}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="btn btn-warning"
+                          disabled={
+                            transitionMutation.isPending ||
+                            !selectedTechId ||
+                            actionNote.trim().length < 10
+                          }
+                        >
+                          {transitionMutation.isPending ? "Reassigning..." : "Confirm Reassignment (T7)"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {triageMode === "CLARIFY" && (
+                    <div className="drawer-section">
+                      <h3 className="drawer-title">Request Clarification from Resident (T2)</h3>
+                      <p className="drawer-desc">
+                        Moves request to <span className="highlight-status">NEEDS_CLARIFICATION</span>. The resident will be prompted to answer before the request can proceed.
+                      </p>
+
+                      <div className="form-group">
+                        <div className="label-row">
+                          <label htmlFor="clarify-note" className="form-label">
+                            Question / Details Needed <span className="required">*</span>
+                          </label>
+                          <span
+                            className={`char-counter ${
+                              actionNote.trim().length >= 10 ? "counter-valid" : "counter-low"
+                            }`}
+                          >
+                            {actionNote.trim().length} chars (min 10)
+                          </span>
+                        </div>
+                        <textarea
+                          id="clarify-note"
+                          rows={3}
+                          value={actionNote}
+                          onChange={(e) => setActionNote(e.target.value)}
+                          placeholder="State what information is missing (e.g. 'Is the water supply leaking from under the sink or from the main wall tap?')..."
+                          className="textarea-input"
+                          required
+                        />
+                      </div>
+
+                      <div className="drawer-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => setTriageMode("NONE")}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="btn btn-warning"
+                          disabled={transitionMutation.isPending || actionNote.trim().length < 10}
+                        >
+                          {transitionMutation.isPending ? "Sending Question..." : "Send Question to Resident"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {triageMode === "REJECT" && (
+                    <div className="drawer-section">
+                      <h3 className="drawer-title">Reject Maintenance Request (T5)</h3>
+                      <p className="drawer-desc text-danger">
+                        Rejection is final and terminal (BR-06). A mandatory explanation of at least 10 characters is required for audit recording.
+                      </p>
+
+                      <div className="form-group">
+                        <div className="label-row">
+                          <label htmlFor="reject-note" className="form-label">
+                            Mandatory Rejection Reason <span className="required">*</span>
+                          </label>
+                          <span
+                            className={`char-counter ${
+                              actionNote.trim().length >= 10 ? "counter-valid" : "counter-low"
+                            }`}
+                          >
+                            {actionNote.trim().length} chars (min 10)
+                          </span>
+                        </div>
+                        <textarea
+                          id="reject-note"
+                          rows={3}
+                          value={actionNote}
+                          onChange={(e) => setActionNote(e.target.value)}
+                          placeholder="Explain why this request is rejected (e.g. 'Duplicate report already logged as MR-000104' or 'Non-university personal appliance')..."
+                          className="textarea-input"
+                          required
+                        />
+                      </div>
+
+                      <div className="drawer-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => setTriageMode("NONE")}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="btn btn-danger"
+                          disabled={transitionMutation.isPending || actionNote.trim().length < 10}
+                        >
+                          {transitionMutation.isPending ? "Rejecting..." : "Confirm Rejection (Terminal)"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </form>
+              </div>
+            )}
+          </div>
+        )}
 
       {/* Chronological Audit Timeline Section (FR-18, SCR-05) */}
       <div className="card timeline-card">

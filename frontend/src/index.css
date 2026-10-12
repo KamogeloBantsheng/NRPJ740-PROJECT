@@ -1579,4 +1579,209 @@ body {
   }
 }
 
+/* ==========================================================================
+   Slice 4: Work-Order Assignment & Dispatch Styles (SCR-07, FR-10, FR-11)
+   ========================================================================== */
+
+.metric-info {
+  color: #0284c7;
+}
+
+.metric-success {
+  color: #16a34a;
+}
+
+/* Assigned Technician Table Cell */
+.assigned-tech-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.assigned-tech-name {
+  font-weight: 600;
+  color: #6d28d9;
+  font-size: 0.875rem;
+}
+
+/* Work Order Card (SCR-05, Table 5.7) */
+.work-order-card {
+  border-top: 4px solid #7c3aed;
+  margin-bottom: 1.5rem;
+  background: #ffffff;
+}
+
+.work-order-header {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.work-order-icon {
+  font-size: 1.85rem;
+  line-height: 1;
+}
+
+.work-order-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #1e1b4b;
+  margin: 0;
+}
+
+.work-order-subtitle {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  margin-top: 0.2rem;
+}
+
+.work-order-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+}
+
+.tech-highlight {
+  color: #6d28d9;
+  font-weight: 700;
+}
+
+/* Prior Work Orders (History) */
+.prior-work-orders-card {
+  margin-bottom: 1.5rem;
+  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  padding: 1rem 1.25rem;
+}
+
+.prior-orders-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.prior-orders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.prior-order-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+}
+
+.prior-order-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.end-reason-tag {
+  background: #fee2e2;
+  color: #b91c1c;
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Modal Dialog Styles (SCR-07 Dispatch Modal) */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-card {
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  width: 100%;
+  max-width: 540px;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: fadeIn 0.2s ease;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modal-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.modal-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0.25rem;
+}
+
+.modal-close-btn:hover {
+  color: var(--color-text-primary);
+}
+
+.modal-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.modal-context-box {
+  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  font-size: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.highlight-tech {
+  color: #7c3aed;
+  font-weight: 700;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
 

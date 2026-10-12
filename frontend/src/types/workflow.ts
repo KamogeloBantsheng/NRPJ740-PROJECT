@@ -30,6 +30,28 @@ export interface FaultCategoryItem {
   name: string;
 }
 
+export interface TechnicianItem {
+  id: number;
+  full_name: string;
+  email: string;
+  is_active: boolean;
+  active_tasks_count: number;
+}
+
+export interface WorkOrderSummary {
+  id: number;
+  request_id: number;
+  technician_id: number;
+  technician_name: string;
+  technician_email: string;
+  assigned_by_id: number;
+  assigned_by_name: string;
+  assigned_at: string;
+  ended_at: string | null;
+  end_reason: "REASSIGNED" | "COMPLETED" | null;
+  is_active: boolean;
+}
+
 export interface MaintenanceRequestSummary {
   id: number;
   tracking_number: string;
@@ -42,6 +64,7 @@ export interface MaintenanceRequestSummary {
   location_kind: "ROOM" | "COMMON_AREA";
   description_snippet: string;
   resident_name?: string | null;
+  assigned_technician_name?: string | null;
   created_at: string;
   closed_at: string | null;
 }
@@ -51,6 +74,7 @@ export interface TransitionPayload {
   expected_status: RequestStatus;
   note?: string;
   priority?: Priority | null;
+  technician_id?: number | null;
 }
 
 export interface TimelineEvent {
@@ -80,7 +104,7 @@ export interface MaintenanceRequestDetail {
     full_name: string;
     email: string;
     student_number: string | null;
-  };
+  } | null;
   location: {
     id: number;
     residence_name: string;
@@ -93,6 +117,8 @@ export interface MaintenanceRequestDetail {
     id: number;
     name: string;
   };
+  active_work_order?: WorkOrderSummary | null;
+  work_orders?: WorkOrderSummary[];
   timeline: TimelineEvent[];
 }
 
