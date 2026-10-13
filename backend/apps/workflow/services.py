@@ -326,6 +326,36 @@ class TransitionService:
                 if action == "COMPLETE_WORK":
                     audit_details["completion_notes"] = trimmed_note
 
+            elif action == "VERIFY_CLOSE":
+                active_wo = (
+                    WorkOrder.objects.select_for_update()
+                    .filter(request=req, ended_at__isnull=True)
+                    .first()
+                )
+                if active_wo:
+                    active_wo.ended_at = timezone.now()
+                    active_wo.end_reason = EndReason.COMPLETED
+                    active_wo.save()
+                    work_order_id = active_wo.id
+                    audit_details.update({
+                        "work_order_id": active_wo.id,
+                        "technician_id": active_wo.technician_id,
+                        "technician_name": active_wo.technician.full_name,
+                    })
+                if trimmed_note:
+                    audit_details["closure_note"] = trimmed_note
+
+            elif action == "REOPEN":
+                active_wo = WorkOrder.objects.filter(request=req, ended_at__isnull=True).first()
+                if active_wo:
+                    work_order_id = active_wo.id
+                    audit_details.update({
+                        "work_order_id": active_wo.id,
+                        "technician_id": active_wo.technician_id,
+                        "technician_name": active_wo.technician.full_name,
+                    })
+                audit_details["reopen_reason"] = trimmed_note
+
             # 6. Apply state changes
             req.status = new_status
 
