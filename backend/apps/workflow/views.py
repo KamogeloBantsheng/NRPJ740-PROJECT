@@ -23,7 +23,7 @@ from apps.workflow.serializers import (
     TechnicianItemSerializer,
     TransitionExecuteSerializer,
 )
-from apps.workflow.services import TransitionService
+from apps.workflow.services import ReportingService, TransitionService
 
 
 class RequestListCreateView(APIView):
@@ -252,4 +252,39 @@ class TechnicianWorkQueueView(APIView):
             context={"request": request},
         )
         return Response(serializer.data)
+
+
+class DashboardView(APIView):
+    """Operational dashboard providing role-scoped maintenance aggregates (FR-16, SCR-10, BR-04, NFR-06).
+
+    - Warden: strictly scoped to own residence, no resident personal data (TC-36).
+    - Supervisor & Admin: all residences or filtered by residence_id (TC-37).
+    - Resident & Technician: forbidden (HTTP 403).
+    - Read-only: mutation attempts return HTTP 403 (TC-36).
+    """
+
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request: Request) -> Response:
+        residence_id = request.query_params.get("residence_id")
+        parsed_res_id = int(residence_id) if residence_id and residence_id.isdigit() else None
+
+        metrics = ReportingService.get_dashboard_metrics(
+            user=request.user,
+            residence_id=parsed_res_id,
+        )
+        return Response(metrics, status=status.HTTP_200_OK)
+
+    def post(self, request: Request) -> Response:
+        raise ForbiddenException("The operational dashboard is strictly read-only.")
+
+    def put(self, request: Request) -> Response:
+        raise ForbiddenException("The operational dashboard is strictly read-only.")
+
+    def patch(self, request: Request) -> Response:
+        raise ForbiddenException("The operational dashboard is strictly read-only.")
+
+    def delete(self, request: Request) -> Response:
+        raise ForbiddenException("The operational dashboard is strictly read-only.")
+
 

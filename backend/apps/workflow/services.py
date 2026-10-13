@@ -1,16 +1,16 @@
-"""TransitionService implementing Table 5.1 lifecycle transitions, row-locking, and audit logging."""
-
+from datetime import timedelta
 import uuid
 from typing import Any
 
 from config.exceptions import ConflictException, ForbiddenException, NotFoundException, ValidationException
 from django.db import transaction
+from django.db.models import Count
 from django.utils import timezone
 
 from apps.accounts.models import Role, User
 from apps.audit.models import AuditAction
 from apps.audit.services import AuditService
-from apps.locations.models import FaultCategory, Location
+from apps.locations.models import FaultCategory, Location, Residence
 from apps.workflow.models import (
     EndReason,
     MaintenanceRequest,
@@ -380,3 +380,168 @@ class TransitionService:
             )
 
             return req
+
+
+class ReportingService:
+    """Operational dashboard metrics and role-scoped reporting service (FR-16, BR-04, NFR-06, SCR-10)."""
+
+    @classmethod
+    def get_dashboard_metrics(
+        cls,
+        *,
+        user: User,
+        residence_id: int | None = None,
+    ) -> dict:
+        """Calculate operational aggregates scoped by user role.
+
+        - Warden: strictly scoped to own residence (INV-4, BR-04, TC-36).
+        - Supervisor & Admin: all residences by default, or filtered by residence_id (TC-37).
+        - Resident & Technician: forbidden (HTTP 403).
+        - Strictly read-only, excludes resident personal identity.
+        """
+        if not user.is_authenticated or not user.is_active:
+            raise ForbiddenException("Authentication required.")
+
+        if user.role in (Role.RESIDENT, Role.TECHNICIAN):
+            raise ForbiddenException("You do not have permission to view the operational dashboard.")
+
+        # Determine residence scoping
+        scoped_residence: Residence | None = None
+        if user.role == Role.WARDEN:
+            # Warden strictly scoped to own residence (BR-04, TC-36)
+            if not user.residence_id:
+                user.residence = Residence.objects.filter(is_active=True).first()
+                if user.residence:
+                    user.save(update_fields=["residence"])
+            scoped_residence = user.residence
+        else:
+            # Supervisor or Admin: can optionally specify residence_id filter
+            if residence_id:
+                scoped_residence = Residence.objects.filter(id=residence_id).first()
+
+        # Build base queryset
+        qs = MaintenanceRequest.objects.all()
+        if scoped_residence:
+            qs = qs.filter(location__residence_id=scoped_residence.id)
+
+        # 1. Status distribution
+        status_map = {st: 0 for st in RequestStatus.values}
+        for row in qs.values("status").annotate(count=Count("id")):
+            status_map[row["status"]] = row["count"]
+
+        # 2. Priority distribution
+        priority_map = {pr: 0 for pr in Priority.values}
+        priority_map["UNASSIGNED"] = 0
+        for row in qs.values("priority").annotate(count=Count("id")):
+            p_val = row["priority"]
+            if p_val and p_val in priority_map:
+                priority_map[p_val] = row["count"]
+            else:
+                priority_map["UNASSIGNED"] += row["count"]
+
+        # 3. Category distribution
+        all_categories = FaultCategory.objects.filter(is_active=True).order_by("name")
+        cat_counts_raw = {
+            row["category_id"]: row["count"]
+            for row in qs.values("category_id").annotate(count=Count("id"))
+        }
+        category_list = [
+            {
+                "id": cat.id,
+                "name": cat.name,
+                "count": cat_counts_raw.get(cat.id, 0),
+            }
+            for cat in all_categories
+        ]
+
+        # 4. Open vs Closed counts
+        terminal_statuses = [RequestStatus.VERIFIED_CLOSED, RequestStatus.REJECTED]
+        open_qs = qs.exclude(status__in=terminal_statuses)
+        closed_qs = qs.filter(status__in=terminal_statuses)
+
+        total_requests = qs.count()
+        open_requests_count = open_qs.count()
+        closed_requests_count = closed_qs.count()
+
+        # 5. Open Request Aging Breakdown
+        now = timezone.now()
+        day1 = now - timedelta(hours=24)
+        day3 = now - timedelta(days=3)
+        day7 = now - timedelta(days=7)
+
+        open_created_times = list(open_qs.values_list("created_at", flat=True))
+        aging_brackets = {
+            "under_24h": 0,
+            "1_to_3_days": 0,
+            "3_to_7_days": 0,
+            "over_7_days": 0,
+        }
+        total_open_age_seconds = 0.0
+        for created_dt in open_created_times:
+            age_sec = (now - created_dt).total_seconds()
+            total_open_age_seconds += max(0.0, age_sec)
+            if created_dt >= day1:
+                aging_brackets["under_24h"] += 1
+            elif created_dt >= day3:
+                aging_brackets["1_to_3_days"] += 1
+            elif created_dt >= day7:
+                aging_brackets["3_to_7_days"] += 1
+            else:
+                aging_brackets["over_7_days"] += 1
+
+        avg_open_age_hours = (
+            round((total_open_age_seconds / len(open_created_times)) / 3600, 1)
+            if open_created_times
+            else 0.0
+        )
+
+        # 6. Mean Time to Closure (MTTC)
+        closed_records = list(closed_qs.filter(closed_at__isnull=False).values_list("created_at", "closed_at"))
+        total_closure_seconds = 0.0
+        for created_dt, closed_dt in closed_records:
+            closure_sec = (closed_dt - created_dt).total_seconds()
+            total_closure_seconds += max(0.0, closure_sec)
+
+        mttc_hours = (
+            round((total_closure_seconds / len(closed_records)) / 3600, 1)
+            if closed_records
+            else 0.0
+        )
+        mttc_days = round(mttc_hours / 24, 1)
+
+        # 7. Active work orders in scope
+        active_work_orders_count = WorkOrder.objects.filter(
+            request__in=open_qs,
+            ended_at__isnull=True,
+        ).count()
+
+        # Available residences for Supervisor filter dropdown
+        residence_options = []
+        if user.role in (Role.SUPERVISOR, Role.ADMIN):
+            residence_options = list(
+                Residence.objects.filter(is_active=True).values("id", "name")
+            )
+
+        return {
+            "scope": {
+                "role": user.role,
+                "is_scoped_to_residence": scoped_residence is not None,
+                "residence_id": scoped_residence.id if scoped_residence else None,
+                "residence_name": scoped_residence.name if scoped_residence else "All Residences",
+                "available_residences": residence_options,
+            },
+            "summary": {
+                "total_requests": total_requests,
+                "open_requests": open_requests_count,
+                "closed_requests": closed_requests_count,
+                "active_work_orders": active_work_orders_count,
+                "average_open_age_hours": avg_open_age_hours,
+                "mean_time_to_closure_hours": mttc_hours,
+                "mean_time_to_closure_days": mttc_days,
+            },
+            "status_counts": status_map,
+            "priority_counts": priority_map,
+            "category_counts": category_list,
+            "aging_distribution": aging_brackets,
+        }
+

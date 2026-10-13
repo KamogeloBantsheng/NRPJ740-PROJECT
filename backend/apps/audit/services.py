@@ -86,21 +86,66 @@ class AuditService:
         actor_id: int | None = None,
         action: str | None = None,
         request_id: int | None = None,
-        from_date: timezone.datetime | None = None,
-        to_date: timezone.datetime | None = None,
+        from_date: Any = None,
+        to_date: Any = None,
+        search: str | None = None,
     ) -> QuerySet[AuditEvent]:
         """Search audit events with administrative filters (FR-18, SCR-13)."""
         qs = AuditEvent.objects.select_related("actor", "target_user").all()
 
         if actor_id is not None:
             qs = qs.filter(actor_id=actor_id)
-        if action:
-            qs = qs.filter(action=action)
+        if action and action.strip():
+            qs = qs.filter(action=action.strip())
         if request_id is not None:
             qs = qs.filter(request_id=request_id)
+
+        # Handle from_date
         if from_date:
-            qs = qs.filter(occurred_at__gte=from_date)
+            if isinstance(from_date, str) and from_date.strip():
+                from django.dateparse import parse_datetime, parse_date
+                from datetime import datetime, time
+                dt = parse_datetime(from_date)
+                if not dt:
+                    d = parse_date(from_date)
+                    if d:
+                        dt = timezone.make_aware(datetime.combine(d, time.min))
+                if dt:
+                    qs = qs.filter(occurred_at__gte=dt)
+            elif hasattr(from_date, "tzinfo"):
+                qs = qs.filter(occurred_at__gte=from_date)
+
+        # Handle to_date
         if to_date:
-            qs = qs.filter(occurred_at__lte=to_date)
+            if isinstance(to_date, str) and to_date.strip():
+                from django.dateparse import parse_datetime, parse_date
+                from datetime import datetime, time
+                dt = parse_datetime(to_date)
+                if not dt:
+                    d = parse_date(to_date)
+                    if d:
+                        dt = timezone.make_aware(datetime.combine(d, time.max))
+                if dt:
+                    qs = qs.filter(occurred_at__lte=dt)
+            elif hasattr(to_date, "tzinfo"):
+                qs = qs.filter(occurred_at__lte=to_date)
+
+        # Free text search across actor, target_user, notes, and tracking ID
+        if search and search.strip():
+            term = search.strip()
+            # If search matches tracking ID "MR-000123"
+            if term.upper().startswith("MR-") and term[3:].isdigit():
+                qs = qs.filter(request_id=int(term[3:]))
+            elif term.isdigit():
+                qs = qs.filter(Q(request_id=int(term)) | Q(actor_id=int(term)))
+            else:
+                qs = qs.filter(
+                    Q(actor__email__icontains=term)
+                    | Q(actor__full_name__icontains=term)
+                    | Q(target_user__email__icontains=term)
+                    | Q(target_user__full_name__icontains=term)
+                    | Q(note__icontains=term)
+                )
 
         return qs.order_by("-occurred_at", "-id")
+
