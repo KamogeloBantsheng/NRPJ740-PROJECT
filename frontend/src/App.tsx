@@ -13,6 +13,8 @@ import { SupervisorTriagePage } from "./pages/SupervisorTriagePage";
 import { DispatchPage } from "./pages/DispatchPage";
 import { VerificationPage } from "./pages/VerificationPage";
 import { TechnicianWorkPage } from "./pages/TechnicianWorkPage";
+import { UserAdminPage } from "./pages/UserAdminPage";
+import { ResidentImportPage } from "./pages/ResidentImportPage";
 import {
   ForbiddenPage,
   NotFoundPage,
@@ -144,11 +146,15 @@ export function App() {
                   path="/users"
                   element={
                     <ProtectedRoute allowedRoles={["ADMIN"]}>
-                      <RoleHomeView
-                        title="User Administration & CSV Import"
-                        roleDescription="System administrators manage user accounts, assign roles, deactivate accounts, and execute all-or-nothing CSV imports."
-                        nextSliceName="Slice 7: User Administration (SCR-11, SCR-12)"
-                      />
+                      <UserAdminPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/users/import"
+                  element={
+                    <ProtectedRoute allowedRoles={["ADMIN"]}>
+                      <ResidentImportPage />
                     </ProtectedRoute>
                   }
                 />

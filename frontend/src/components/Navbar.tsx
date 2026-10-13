@@ -69,6 +69,16 @@ export function Navbar() {
                   My Work
                 </Link>
               )}
+              {user.role === "ADMIN" && (
+                <>
+                  <Link to="/users" className="nav-link">
+                    Users
+                  </Link>
+                  <Link to="/users/import" className="nav-link">
+                    Import Residents
+                  </Link>
+                </>
+              )}
               <Link to="/change-password" className="nav-link">
                 Password
               </Link>
