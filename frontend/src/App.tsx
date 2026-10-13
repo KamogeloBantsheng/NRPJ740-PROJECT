@@ -11,6 +11,7 @@ import { SubmitRequestPage } from "./pages/SubmitRequestPage";
 import { RequestDetailPage } from "./pages/RequestDetailPage";
 import { SupervisorTriagePage } from "./pages/SupervisorTriagePage";
 import { DispatchPage } from "./pages/DispatchPage";
+import { TechnicianWorkPage } from "./pages/TechnicianWorkPage";
 import {
   ForbiddenPage,
   NotFoundPage,
@@ -112,11 +113,7 @@ export function App() {
                   path="/work"
                   element={
                     <ProtectedRoute allowedRoles={["TECHNICIAN"]}>
-                      <RoleHomeView
-                        title="Technician Work Queue"
-                        roleDescription="Technicians review assigned work orders without resident identities, start work, and record mandatory completion notes."
-                        nextSliceName="Slice 5: Technician Work (SCR-09)"
-                      />
+                      <TechnicianWorkPage />
                     </ProtectedRoute>
                   }
                 />

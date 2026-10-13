@@ -1522,6 +1522,26 @@ body {
   background: #fef2f2;
 }
 
+.btn-success {
+  background: #16a34a;
+  color: #ffffff;
+  border: 1px solid transparent;
+}
+
+.btn-success:hover {
+  background: #15803d;
+}
+
+.btn-outline-success {
+  background: transparent;
+  border: 1.5px solid #16a34a;
+  color: #16a34a;
+}
+
+.btn-outline-success:hover {
+  background: #f0fdf4;
+}
+
 /* Triage Drawer */
 .triage-drawer {
   margin-top: 1.25rem;
@@ -1783,5 +1803,25 @@ body {
   gap: 0.75rem;
   margin-top: 0.5rem;
 }
+
+/* ==========================================================================
+   Slice 5: Technician "My Work" Queue (SCR-09, FR-13, FR-14, FR-15)
+   ========================================================================== */
+
+.technician-page-container {
+  max-width: 1200px;
+}
+
+.technician-control-card {
+  border-top: 4px solid #16a34a;
+  margin-bottom: 1.5rem;
+}
+
+.status-in-progress-note {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-weight: 600;
+}
+
 
 

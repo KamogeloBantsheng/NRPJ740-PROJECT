@@ -70,4 +70,17 @@ export const workflowApi = {
   getTechnicians: async (): Promise<TechnicianItem[]> => {
     return apiClient<TechnicianItem[]>("/api/technicians/");
   },
+
+  getWorkQueue: async (filters?: string | RequestFilters): Promise<MaintenanceRequestSummary[]> => {
+    const params = new URLSearchParams();
+    if (typeof filters === "string") {
+      if (filters) params.append("status", filters);
+    } else if (filters) {
+      if (filters.status) params.append("status", filters.status);
+      if (filters.category_id) params.append("category_id", String(filters.category_id));
+      if (filters.location_id) params.append("location_id", String(filters.location_id));
+    }
+    const qs = params.toString();
+    return apiClient<MaintenanceRequestSummary[]>(qs ? `/api/work-queue/?${qs}` : "/api/work-queue/");
+  },
 };

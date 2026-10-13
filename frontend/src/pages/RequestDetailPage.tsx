@@ -13,7 +13,14 @@ import { useAuth } from "../context/useAuth";
 import { StatusBadge } from "../components/StatusBadge";
 import type { Priority, RequestStatus, TransitionPayload } from "../types/workflow";
 
-type TriageMode = "NONE" | "APPROVE" | "CLARIFY" | "REJECT" | "ASSIGN" | "REASSIGN";
+type TriageMode =
+  | "NONE"
+  | "APPROVE"
+  | "CLARIFY"
+  | "REJECT"
+  | "ASSIGN"
+  | "REASSIGN"
+  | "COMPLETE_WORK";
 
 export function RequestDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -58,6 +65,7 @@ export function RequestDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["supervisor-requests"] });
       queryClient.invalidateQueries({ queryKey: ["dispatch-requests"] });
       queryClient.invalidateQueries({ queryKey: ["technicians"] });
+      queryClient.invalidateQueries({ queryKey: ["tech-work-queue"] });
       setTriageMode("NONE");
       setSelectedTechId("");
       setActionNote("");
@@ -101,8 +109,22 @@ export function RequestDetailPage() {
               : "This maintenance request was not found or is outside your authorization scope."}
           </p>
           <div className="mt-3">
-            <Link to={user?.role === "SUPERVISOR" ? "/triage" : "/requests"} className="btn btn-secondary">
-              &larr; Back to {user?.role === "SUPERVISOR" ? "Triage Queue" : "My Requests"}
+            <Link
+              to={
+                user?.role === "SUPERVISOR"
+                  ? "/triage"
+                  : user?.role === "TECHNICIAN"
+                  ? "/work"
+                  : "/requests"
+              }
+              className="btn btn-secondary"
+            >
+              &larr; Back to{" "}
+              {user?.role === "SUPERVISOR"
+                ? "Triage Queue"
+                : user?.role === "TECHNICIAN"
+                ? "My Work Queue"
+                : "My Requests"}
             </Link>
             <button onClick={() => refetch()} className="btn btn-primary ml-2">
               Try Again
@@ -114,7 +136,10 @@ export function RequestDetailPage() {
   }
 
   const isSupervisor = user?.role === "SUPERVISOR";
+  const isTechnician = user?.role === "TECHNICIAN";
   const isResidentOwner = user?.role === "RESIDENT" && req.resident?.id === user.id;
+  const isAssignedTech =
+    isTechnician && req.active_work_order?.technician_id === user?.id;
 
   // Latest clarification requested audit event if any
   const latestClarification = [...req.timeline]
@@ -195,6 +220,16 @@ export function RequestDetailPage() {
         technician_id: Number(selectedTechId),
         note: trimmed,
       });
+    } else if (triageMode === "COMPLETE_WORK") {
+      if (trimmed.length < 20) {
+        setActionError("Work completion notes must be at least 20 characters long (BR-02).");
+        return;
+      }
+      transitionMutation.mutate({
+        action: "COMPLETE_WORK",
+        expected_status: req.status,
+        note: trimmed,
+      });
     } else if (triageMode === "REJECT") {
       if (trimmed.length < 10) {
         setActionError("Rejection reason must be at least 10 characters long.");
@@ -208,15 +243,35 @@ export function RequestDetailPage() {
     }
   };
 
+  const handleStartWork = () => {
+    setActionError(null);
+    setActionSuccess(null);
+    transitionMutation.mutate({
+      action: "START_WORK",
+      expected_status: req.status,
+    });
+  };
+
   return (
     <div className="page-container detail-page-container">
       {/* Navigation Breadcrumb */}
       <div className="breadcrumb-nav">
         <Link
-          to={isSupervisor ? "/triage" : "/requests"}
+          to={
+            isSupervisor
+              ? "/triage"
+              : isTechnician
+              ? "/work"
+              : "/requests"
+          }
           className="back-link"
         >
-          &larr; Back to {isSupervisor ? "Triage Queue" : "My Requests"}
+          &larr; Back to{" "}
+          {isSupervisor
+            ? "Triage Queue"
+            : isTechnician
+            ? "My Work Queue"
+            : "My Requests"}
         </Link>
       </div>
 
@@ -897,6 +952,110 @@ export function RequestDetailPage() {
             )}
           </div>
         )}
+
+      {/* FR-14, FR-15: Technician Repair Actions Card (SCR-09, SCR-05) */}
+      {isAssignedTech && ["ASSIGNED", "IN_PROGRESS", "REOPENED"].includes(req.status) && (
+        <div className="card triage-control-card technician-control-card">
+          <div className="triage-control-header">
+            <div>
+              <h2 className="section-title">Technician Repair Actions (FR-14, FR-15)</h2>
+              <p className="section-subtitle">
+                {["ASSIGNED", "REOPENED"].includes(req.status)
+                  ? "Start repair work to update the request status to IN PROGRESS (FR-14)."
+                  : "Submit mandatory repair completion notes for supervisor verification review (FR-15)."}
+              </p>
+            </div>
+            {req.status === "IN_PROGRESS" && (
+              <span className="status-note status-in-progress-note">
+                ⚙️ Repair Work In Progress
+              </span>
+            )}
+          </div>
+
+          <div className="triage-buttons-row">
+            {["ASSIGNED", "REOPENED"].includes(req.status) && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleStartWork}
+                disabled={transitionMutation.isPending}
+              >
+                {transitionMutation.isPending ? "Starting Work..." : "🔧 Start Work (T8)"}
+              </button>
+            )}
+
+            {req.status === "IN_PROGRESS" && (
+              <button
+                type="button"
+                className={`btn ${triageMode === "COMPLETE_WORK" ? "btn-success" : "btn-outline-success"}`}
+                onClick={() => {
+                  if (triageMode !== "COMPLETE_WORK") {
+                    setActionNote("");
+                  }
+                  setTriageMode(triageMode === "COMPLETE_WORK" ? "NONE" : "COMPLETE_WORK");
+                }}
+              >
+                ✓ Complete Work (T9)
+              </button>
+            )}
+          </div>
+
+          {/* Complete Work Drawer */}
+          {triageMode === "COMPLETE_WORK" && (
+            <div className="triage-drawer">
+              <form onSubmit={handleTriageExecute} className="triage-form">
+                <div className="drawer-section">
+                  <h3 className="drawer-title">Submit Repair Completion (T9)</h3>
+                  <p className="drawer-desc">
+                    Detailed notes of at least 20 characters are required for supervisor verification review (BR-02).
+                  </p>
+
+                  <div className="form-group">
+                    <div className="label-row">
+                      <label htmlFor="tech-completion-note" className="form-label">
+                        Repair Completion Notes <span className="required">*</span>
+                      </label>
+                      <span
+                        className={`char-counter ${
+                          actionNote.trim().length >= 20 ? "counter-valid" : "counter-low"
+                        }`}
+                      >
+                        {actionNote.trim().length} chars (min 20)
+                      </span>
+                    </div>
+                    <textarea
+                      id="tech-completion-note"
+                      rows={4}
+                      value={actionNote}
+                      onChange={(e) => setActionNote(e.target.value)}
+                      placeholder="Describe what was repaired or replaced, and confirm tests passed (e.g. 'Replaced 15mm copper pipe valve, repressurized system, confirmed dry')..."
+                      className="textarea-input"
+                      required
+                    />
+                  </div>
+
+                  <div className="drawer-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setTriageMode("NONE")}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn btn-success"
+                      disabled={transitionMutation.isPending || actionNote.trim().length < 20}
+                    >
+                      {transitionMutation.isPending ? "Submitting..." : "Confirm Work Completed (T9)"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Chronological Audit Timeline Section (FR-18, SCR-05) */}
       <div className="card timeline-card">
