@@ -1,7 +1,8 @@
 """Serializers for audit log domain records (FR-18, SCR-13)."""
 
 from rest_framework import serializers
-from apps.audit.models import AuditAction, AuditEvent
+
+from apps.audit.models import AuditEvent
 
 
 class AuditUserMiniSerializer(serializers.Serializer):
@@ -23,7 +24,7 @@ class AuditEventItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AuditEvent
-        fields = [
+        fields = (
             "id",
             "occurred_at",
             "action",
@@ -37,7 +38,7 @@ class AuditEventItemSerializer(serializers.ModelSerializer):
             "to_status",
             "note",
             "details",
-        ]
+        )
 
     def get_tracking_number(self, obj: AuditEvent) -> str | None:
         if obj.request_id:

@@ -6,7 +6,6 @@ import secrets
 from config.exceptions import (
     ConflictException,
     ForbiddenException,
-    NotFoundException,
     ThrottledException,
     UnauthenticatedException,
     ValidationException,
@@ -176,9 +175,9 @@ def terminate_user_sessions(user_id: int) -> None:
                 data = session.get_decoded()
                 if data.get("_auth_user_id") == str(user_id):
                     session.delete()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
 
 
@@ -201,8 +200,6 @@ class UserAdminService:
         residence_id: int | None = None,
     ):
         """List users with optional filtering and active work-order counts for technicians."""
-        from apps.workflow.models import WorkOrder
-
         qs = User.objects.select_related("residence").annotate(
             active_work_orders_count=Count(
                 "work_orders",
@@ -270,7 +267,9 @@ class UserAdminService:
                     field_errors["residence"] = ["Specified residence does not exist."]
         else:
             if residence_id:
-                field_errors["residence"] = ["Residence cannot be assigned to supervisors, technicians, or administrators."]
+                field_errors["residence"] = [
+                    "Residence cannot be assigned to supervisors, technicians, or administrators."
+                ]
 
         if role == Role.RESIDENT:
             if not trimmed_student:
@@ -394,7 +393,10 @@ class UserAdminService:
                 if student_number:
                     user.student_number = student_number.strip()
                 elif not user.student_number:
-                    raise ValidationException("Student number required for resident.", fields={"student_number": ["Required."]})
+                    raise ValidationException(
+                        "Student number required for resident.",
+                        fields={"student_number": ["Required."]},
+                    )
             else:
                 user.student_number = None
 
@@ -551,7 +553,10 @@ class UserImportService:
                 })
 
         if row_count == 0:
-            raise ValidationException("CSV file contains no data rows.", fields={"file": ["File contains no data rows."]},)
+            raise ValidationException(
+                "CSV file contains no data rows.",
+                fields={"file": ["File contains no data rows."]},
+            )
 
         # Database collision check against existing records
         if seen_emails:
@@ -564,7 +569,9 @@ class UserImportService:
                     })
 
         if seen_students:
-            existing_students = set(User.objects.filter(student_number__in=seen_students).values_list("student_number", flat=True))
+            existing_students = set(
+                User.objects.filter(student_number__in=seen_students).values_list("student_number", flat=True)
+            )
             for item in rows_data:
                 if item["student_number"] in existing_students:
                     errors.append({

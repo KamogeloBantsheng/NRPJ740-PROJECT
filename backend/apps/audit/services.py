@@ -1,10 +1,9 @@
-"""AuditService implementation for recording and querying append-only audit events (FR-17, FR-18, NFR-05)."""
-
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from typing import Any
 
 from django.db.models import Q, QuerySet
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 
 from apps.accounts.models import User
 from apps.audit.models import AuditAction, AuditEvent
@@ -103,8 +102,6 @@ class AuditService:
         # Handle from_date
         if from_date:
             if isinstance(from_date, str) and from_date.strip():
-                from django.dateparse import parse_datetime, parse_date
-                from datetime import datetime, time
                 dt = parse_datetime(from_date)
                 if not dt:
                     d = parse_date(from_date)
@@ -118,8 +115,6 @@ class AuditService:
         # Handle to_date
         if to_date:
             if isinstance(to_date, str) and to_date.strip():
-                from django.dateparse import parse_datetime, parse_date
-                from datetime import datetime, time
                 dt = parse_datetime(to_date)
                 if not dt:
                     d = parse_date(to_date)
