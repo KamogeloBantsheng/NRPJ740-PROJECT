@@ -77,6 +77,9 @@ class RequestTimelineEventSerializer(serializers.ModelSerializer):
         return obj.actor.role if obj.actor else "SYSTEM"
 
     def get_actor_name(self, obj: AuditEvent) -> str:
+        user = self.context.get("request").user if "request" in self.context else None
+        if user and user.role in (Role.WARDEN, Role.TECHNICIAN) and obj.actor and obj.actor.role == Role.RESIDENT:
+            return "Resident"
         return obj.actor.full_name if obj.actor else "System"
 
 
@@ -239,4 +242,4 @@ class MaintenanceRequestDetailSerializer(serializers.ModelSerializer):
 
     def get_timeline(self, obj: MaintenanceRequest) -> list[dict]:
         events = AuditService.get_request_history(obj.id)
-        return RequestTimelineEventSerializer(events, many=True).data
+        return RequestTimelineEventSerializer(events, many=True, context=self.context).data

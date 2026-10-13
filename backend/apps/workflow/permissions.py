@@ -32,9 +32,11 @@ class PermissionPolicy:
             return base_qs
 
         if user.role == Role.TECHNICIAN:
-            # Technicians will see requests linked to their active work orders (Slice 5)
-            # Prior to Slice 4/5, technician queue is empty
-            return base_qs.none()
+            # Technicians see requests linked to their active work orders (Slice 5, FR-13, BR-04)
+            return base_qs.filter(
+                work_orders__technician=user,
+                work_orders__ended_at__isnull=True,
+            ).distinct()
 
         return base_qs.none()
 
@@ -53,6 +55,9 @@ class PermissionPolicy:
             return True
 
         if user.role == Role.TECHNICIAN:
-            return False
+            return req.work_orders.filter(
+                technician=user,
+                ended_at__isnull=True,
+            ).exists()
 
         return False

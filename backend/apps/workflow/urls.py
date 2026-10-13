@@ -8,6 +8,7 @@ from apps.workflow.views import (
     RequestTimelineView,
     RequestTransitionView,
     TechnicianListView,
+    TechnicianWorkQueueView,
 )
 
 urlpatterns = [
@@ -16,4 +17,5 @@ urlpatterns = [
     path("requests/<int:pk>/timeline/", RequestTimelineView.as_view(), name="request-timeline"),
     path("requests/<int:pk>/transition/", RequestTransitionView.as_view(), name="request-transition"),
     path("technicians/", TechnicianListView.as_view(), name="technician-list"),
+    path("work-queue/", TechnicianWorkQueueView.as_view(), name="work-queue"),
 ]

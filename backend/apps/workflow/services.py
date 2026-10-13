@@ -174,6 +174,12 @@ class TransitionService:
             if rule.actor_role == Role.RESIDENT and req.resident_id != actor.id:
                 raise ForbiddenException("Only the resident who submitted the request may perform this action.")
 
+            # Additional assigned technician check for Technician actions (START_WORK, COMPLETE_WORK)
+            if rule.actor_role == Role.TECHNICIAN:
+                active_wo = WorkOrder.objects.filter(request=req, ended_at__isnull=True).first()
+                if not active_wo or active_wo.technician_id != actor.id:
+                    raise ForbiddenException("Only the technician assigned to this request can perform this action.")
+
             # Residence boundary check for Supervisor
             if actor.role == Role.SUPERVISOR and actor.residence_id:
                 if req.location.residence_id != actor.residence_id:
@@ -306,6 +312,19 @@ class TransitionService:
                     "new_technician_name": new_tech.full_name,
                     "reason": trimmed_note,
                 })
+
+            elif action in ("START_WORK", "COMPLETE_WORK"):
+                active_wo = WorkOrder.objects.filter(request=req, ended_at__isnull=True).first()
+                if not active_wo or active_wo.technician_id != actor.id:
+                    raise ForbiddenException("Only the technician assigned to this request can perform this action.")
+                work_order_id = active_wo.id
+                audit_details.update({
+                    "work_order_id": active_wo.id,
+                    "technician_id": actor.id,
+                    "technician_name": actor.full_name,
+                })
+                if action == "COMPLETE_WORK":
+                    audit_details["completion_notes"] = trimmed_note
 
             # 6. Apply state changes
             req.status = new_status

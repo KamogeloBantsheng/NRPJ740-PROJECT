@@ -3,7 +3,7 @@
 import uuid
 
 from config.exceptions import ForbiddenException, NotFoundException, ValidationException
-from django.db.models import Count, Q
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 from apps.accounts.models import Role, User
 from apps.audit.services import AuditService
 from apps.locations.models import FaultCategory, Location
-from apps.workflow.models import MaintenanceRequest
+from apps.workflow.models import MaintenanceRequest, Priority
 from apps.workflow.permissions import PermissionPolicy
 from apps.workflow.serializers import (
     MaintenanceRequestDetailSerializer,
@@ -133,7 +133,11 @@ class RequestTimelineView(APIView):
             raise NotFoundException(f"Maintenance request {pk} not found or outside your scope.")
 
         events = AuditService.get_request_history(req.id)
-        serializer = RequestTimelineEventSerializer(events, many=True)
+        serializer = RequestTimelineEventSerializer(
+            events,
+            many=True,
+            context={"request": request},
+        )
         return Response(serializer.data)
 
 
@@ -200,5 +204,52 @@ class TechnicianListView(APIView):
             .order_by("full_name")
         )
         serializer = TechnicianItemSerializer(technicians, many=True)
+        return Response(serializer.data)
+
+
+class TechnicianWorkQueueView(APIView):
+    """List requests currently assigned to the authenticated technician (FR-13, SCR-09, BR-04)."""
+
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request: Request) -> Response:
+        if request.user.role != Role.TECHNICIAN:
+            raise ForbiddenException("Only technicians can view their assigned work queue.")
+
+        qs = PermissionPolicy.scope_requests(request.user)
+
+        # Optional status filtering (e.g. ASSIGNED, IN_PROGRESS, REOPENED)
+        req_status = request.query_params.get("status")
+        if req_status:
+            statuses = [s.strip() for s in req_status.split(",") if s.strip()]
+            if len(statuses) == 1:
+                qs = qs.filter(status=statuses[0])
+            elif len(statuses) > 1:
+                qs = qs.filter(status__in=statuses)
+
+        category_id = request.query_params.get("category_id")
+        if category_id:
+            qs = qs.filter(category_id=category_id)
+
+        location_id = request.query_params.get("location_id")
+        if location_id:
+            qs = qs.filter(location_id=location_id)
+
+        # Priority ordering: CRITICAL > HIGH > MEDIUM > LOW, then oldest report first
+        priority_order = Case(
+            When(priority=Priority.CRITICAL, then=Value(1)),
+            When(priority=Priority.HIGH, then=Value(2)),
+            When(priority=Priority.MEDIUM, then=Value(3)),
+            When(priority=Priority.LOW, then=Value(4)),
+            default=Value(5),
+            output_field=IntegerField(),
+        )
+        qs = qs.annotate(_priority_rank=priority_order).order_by("_priority_rank", "created_at")
+
+        serializer = MaintenanceRequestListSerializer(
+            qs,
+            many=True,
+            context={"request": request},
+        )
         return Response(serializer.data)
 
