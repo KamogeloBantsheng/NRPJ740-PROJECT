@@ -1823,5 +1823,71 @@ body {
   font-weight: 600;
 }
 
+/* ==========================================================================
+   Slice 6: Supervisor Verification & Quality Review (SCR-08, FR-12)
+   ========================================================================== */
+
+.verification-page-container {
+  max-width: 1200px;
+}
+
+.verification-control-card {
+  border-top: 4px solid #059669;
+  margin-bottom: 1.5rem;
+}
+
+.status-awaiting-verify-note {
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 600;
+}
+
+.technician-notes-callout {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-left: 4px solid #16a34a;
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.callout-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #166534;
+  margin-bottom: 0.35rem;
+}
+
+.callout-meta {
+  font-size: 0.775rem;
+  color: #15803d;
+}
+
+.callout-content {
+  margin: 0;
+  font-size: 0.925rem;
+  color: var(--color-text-primary);
+  line-height: 1.45;
+}
+
+.action-buttons-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.modal-info-text {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+
 
 

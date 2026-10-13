@@ -49,6 +49,9 @@ export function Navbar() {
                   <Link to="/dispatch" className="nav-link">
                     Dispatch
                   </Link>
+                  <Link to="/verification" className="nav-link">
+                    Verification
+                  </Link>
                 </>
               )}
               {user.role === "RESIDENT" && (

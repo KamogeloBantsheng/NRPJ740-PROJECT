@@ -20,7 +20,9 @@ type TriageMode =
   | "REJECT"
   | "ASSIGN"
   | "REASSIGN"
-  | "COMPLETE_WORK";
+  | "COMPLETE_WORK"
+  | "VERIFY_CLOSE"
+  | "REOPEN";
 
 export function RequestDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -64,6 +66,7 @@ export function RequestDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["requests"] });
       queryClient.invalidateQueries({ queryKey: ["supervisor-requests"] });
       queryClient.invalidateQueries({ queryKey: ["dispatch-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["verification-requests"] });
       queryClient.invalidateQueries({ queryKey: ["technicians"] });
       queryClient.invalidateQueries({ queryKey: ["tech-work-queue"] });
       setTriageMode("NONE");
@@ -71,7 +74,13 @@ export function RequestDetailPage() {
       setActionNote("");
       setResidentResponse("");
       setActionError(null);
-      setActionSuccess("Request status updated successfully.");
+      if (updated.status === "VERIFIED_CLOSED") {
+        setActionSuccess(`Request ${updated.tracking_number} has been verified and permanently CLOSED (T10).`);
+      } else if (updated.status === "REOPENED") {
+        setActionSuccess(`Request ${updated.tracking_number} has been REOPENED with feedback (T11). Technician assignment retained.`);
+      } else {
+        setActionSuccess("Request status updated successfully.");
+      }
     },
     onError: (err) => {
       if (err instanceof AppError && err.statusCode === 409) {
@@ -141,10 +150,37 @@ export function RequestDetailPage() {
   const isAssignedTech =
     isTechnician && req.active_work_order?.technician_id === user?.id;
 
+  const getSupervisorBackTarget = (status?: string) => {
+    if (status === "WORK_COMPLETED" || status === "VERIFIED_CLOSED") {
+      return { to: "/verification", label: "Verification Queue" };
+    }
+    if (status === "APPROVED" || status === "ASSIGNED") {
+      return { to: "/dispatch", label: "Dispatch Queue" };
+    }
+    return { to: "/triage", label: "Triage Queue" };
+  };
+
+  const supervisorBack = getSupervisorBackTarget(req.status);
+  const backTo = isSupervisor
+    ? supervisorBack.to
+    : isTechnician
+    ? "/work"
+    : "/requests";
+  const backLabel = isSupervisor
+    ? supervisorBack.label
+    : isTechnician
+    ? "My Work Queue"
+    : "My Requests";
+
   // Latest clarification requested audit event if any
   const latestClarification = [...req.timeline]
     .reverse()
     .find((e) => e.action === "CLARIFICATION_REQUESTED");
+
+  // Latest completion audit event if any
+  const latestCompletion = [...req.timeline]
+    .reverse()
+    .find((e) => e.action === "WORK_COMPLETED");
 
   const handleClarificationSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -230,6 +266,22 @@ export function RequestDetailPage() {
         expected_status: req.status,
         note: trimmed,
       });
+    } else if (triageMode === "VERIFY_CLOSE") {
+      transitionMutation.mutate({
+        action: "VERIFY_CLOSE",
+        expected_status: req.status,
+        note: trimmed || undefined,
+      });
+    } else if (triageMode === "REOPEN") {
+      if (trimmed.length < 10) {
+        setActionError("Reopening feedback reason must be at least 10 characters long (BR-02).");
+        return;
+      }
+      transitionMutation.mutate({
+        action: "REOPEN",
+        expected_status: req.status,
+        note: trimmed,
+      });
     } else if (triageMode === "REJECT") {
       if (trimmed.length < 10) {
         setActionError("Rejection reason must be at least 10 characters long.");
@@ -256,22 +308,8 @@ export function RequestDetailPage() {
     <div className="page-container detail-page-container">
       {/* Navigation Breadcrumb */}
       <div className="breadcrumb-nav">
-        <Link
-          to={
-            isSupervisor
-              ? "/triage"
-              : isTechnician
-              ? "/work"
-              : "/requests"
-          }
-          className="back-link"
-        >
-          &larr; Back to{" "}
-          {isSupervisor
-            ? "Triage Queue"
-            : isTechnician
-            ? "My Work Queue"
-            : "My Requests"}
+        <Link to={backTo} className="back-link">
+          &larr; Back to {backLabel}
         </Link>
       </div>
 
@@ -952,6 +990,172 @@ export function RequestDetailPage() {
             )}
           </div>
         )}
+
+      {/* FR-12: Supervisor Quality Verification Review Card (SCR-08, SCR-05) */}
+      {isSupervisor && req.status === "WORK_COMPLETED" && (
+        <div className="card triage-control-card verification-control-card">
+          <div className="triage-control-header">
+            <div>
+              <h2 className="section-title">Supervisor Quality Verification Review (FR-12, SCR-08)</h2>
+              <p className="section-subtitle">
+                Review completed technician repairs on site. Confirm and close request (T10) or return to technician with feedback (T11).
+              </p>
+            </div>
+            <span className="status-note status-awaiting-verify-note">
+              📋 Awaiting Supervisor Verification
+            </span>
+          </div>
+
+          {/* Technician Completion Notes Callout */}
+          {latestCompletion && (
+            <div className="technician-notes-callout">
+              <div className="callout-header">
+                <strong>Technician Completion Notes:</strong>
+                <span className="callout-meta">
+                  Submitted by {latestCompletion.actor_name} &bull;{" "}
+                  {new Date(latestCompletion.occurred_at).toLocaleString("en-ZA", {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+              <p className="callout-content">{latestCompletion.note}</p>
+            </div>
+          )}
+
+          <div className="triage-buttons-row">
+            <button
+              type="button"
+              className={`btn ${triageMode === "VERIFY_CLOSE" ? "btn-success" : "btn-outline-success"}`}
+              onClick={() => {
+                if (triageMode !== "VERIFY_CLOSE") {
+                  setActionNote("");
+                }
+                setTriageMode(triageMode === "VERIFY_CLOSE" ? "NONE" : "VERIFY_CLOSE");
+              }}
+            >
+              ✓ Verify & Close Request (T10)
+            </button>
+            <button
+              type="button"
+              className={`btn ${triageMode === "REOPEN" ? "btn-warning" : "btn-outline-warning"}`}
+              onClick={() => {
+                if (triageMode !== "REOPEN") {
+                  setActionNote("");
+                }
+                setTriageMode(triageMode === "REOPEN" ? "NONE" : "REOPEN");
+              }}
+            >
+              ↺ Reopen with Feedback (T11)
+            </button>
+          </div>
+
+          {/* Verification Drawer */}
+          {triageMode === "VERIFY_CLOSE" && (
+            <div className="triage-drawer">
+              <form onSubmit={handleTriageExecute} className="triage-form">
+                <div className="drawer-section">
+                  <h3 className="drawer-title">Confirm & Close Maintenance Request (T10)</h3>
+                  <p className="drawer-desc">
+                    Closing this request is permanent and terminal (BR-06). The active work order will end as <strong>COMPLETED</strong>, and the completion timestamp will be recorded.
+                  </p>
+
+                  <div className="form-group">
+                    <label htmlFor="verify-note" className="form-label">
+                      Supervisor Closure Confirmation Note <span className="text-muted">(Optional)</span>
+                    </label>
+                    <textarea
+                      id="verify-note"
+                      rows={3}
+                      value={actionNote}
+                      onChange={(e) => setActionNote(e.target.value)}
+                      placeholder="Optional notes confirming on-site inspection (e.g. 'Inspected room, valve repaired and tested dry under pressure')..."
+                      className="textarea-input"
+                    />
+                  </div>
+
+                  <div className="drawer-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setTriageMode("NONE")}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn btn-success"
+                      disabled={transitionMutation.isPending}
+                    >
+                      {transitionMutation.isPending ? "Closing..." : "Confirm & Close Request (T10)"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Reopen Drawer */}
+          {triageMode === "REOPEN" && (
+            <div className="triage-drawer">
+              <form onSubmit={handleTriageExecute} className="triage-form">
+                <div className="drawer-section">
+                  <h3 className="drawer-title">Reopen Maintenance Request with Feedback (T11)</h3>
+                  <p className="drawer-desc text-warning">
+                    Reopening requires mandatory feedback of at least 10 characters explaining what needs correction (BR-02). The request will return to <strong>REOPENED</strong> while retaining the assigned technician.
+                  </p>
+
+                  <div className="form-group">
+                    <div className="label-row">
+                      <label htmlFor="reopen-note" className="form-label">
+                        Reopening Feedback & Instructions <span className="required">*</span>
+                      </label>
+                      <span
+                        className={`char-counter ${
+                          actionNote.trim().length >= 10 ? "counter-valid" : "counter-low"
+                        }`}
+                      >
+                        {actionNote.trim().length} chars (min 10)
+                      </span>
+                    </div>
+                    <textarea
+                      id="reopen-note"
+                      rows={4}
+                      value={actionNote}
+                      onChange={(e) => setActionNote(e.target.value)}
+                      placeholder="Explain what was unsatisfactory or what further work is required (e.g. 'Valve still leaks when hot tap turned on. Please replace entire valve seat.')..."
+                      className="textarea-input"
+                      required
+                    />
+                    <span className="field-hint">
+                      This feedback will be recorded in the audit log and displayed to the technician in their work queue.
+                    </span>
+                  </div>
+
+                  <div className="drawer-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setTriageMode("NONE")}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn btn-warning"
+                      disabled={transitionMutation.isPending || actionNote.trim().length < 10}
+                    >
+                      {transitionMutation.isPending ? "Reopening..." : "Reopen Request (T11)"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* FR-14, FR-15: Technician Repair Actions Card (SCR-09, SCR-05) */}
       {isAssignedTech && ["ASSIGNED", "IN_PROGRESS", "REOPENED"].includes(req.status) && (

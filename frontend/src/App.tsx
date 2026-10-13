@@ -11,6 +11,7 @@ import { SubmitRequestPage } from "./pages/SubmitRequestPage";
 import { RequestDetailPage } from "./pages/RequestDetailPage";
 import { SupervisorTriagePage } from "./pages/SupervisorTriagePage";
 import { DispatchPage } from "./pages/DispatchPage";
+import { VerificationPage } from "./pages/VerificationPage";
 import { TechnicianWorkPage } from "./pages/TechnicianWorkPage";
 import {
   ForbiddenPage,
@@ -105,6 +106,14 @@ export function App() {
                   element={
                     <ProtectedRoute allowedRoles={["SUPERVISOR"]}>
                       <DispatchPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/verification"
+                  element={
+                    <ProtectedRoute allowedRoles={["SUPERVISOR"]}>
+                      <VerificationPage />
                     </ProtectedRoute>
                   }
                 />
