@@ -15,10 +15,11 @@ import { VerificationPage } from "./pages/VerificationPage";
 import { TechnicianWorkPage } from "./pages/TechnicianWorkPage";
 import { UserAdminPage } from "./pages/UserAdminPage";
 import { ResidentImportPage } from "./pages/ResidentImportPage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { AuditLogPage } from "./pages/AuditLogPage";
 import {
   ForbiddenPage,
   NotFoundPage,
-  RoleHomeView,
   UnauthorizedPage,
 } from "./pages/ErrorPages";
 
@@ -132,12 +133,16 @@ export function App() {
                 <Route
                   path="/dashboard"
                   element={
-                    <ProtectedRoute allowedRoles={["WARDEN", "SUPERVISOR"]}>
-                      <RoleHomeView
-                        title="Residence Oversight Dashboard"
-                        roleDescription="Wardens and Supervisors monitor residence maintenance aggregates and status distributions read-only."
-                        nextSliceName="Slice 8: Dashboard & Audit Review (SCR-10)"
-                      />
+                    <ProtectedRoute allowedRoles={["WARDEN", "SUPERVISOR", "ADMIN"]}>
+                      <DashboardPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/audit-logs"
+                  element={
+                    <ProtectedRoute allowedRoles={["ADMIN"]}>
+                      <AuditLogPage />
                     </ProtectedRoute>
                   }
                 />

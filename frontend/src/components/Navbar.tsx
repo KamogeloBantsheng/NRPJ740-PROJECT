@@ -41,8 +41,16 @@ export function Navbar() {
             </div>
 
             <nav className="navbar-actions" aria-label="Navigation and account actions">
+              {user.role === "WARDEN" && (
+                <Link to="/dashboard" className="nav-link">
+                  Dashboard
+                </Link>
+              )}
               {user.role === "SUPERVISOR" && (
                 <>
+                  <Link to="/dashboard" className="nav-link">
+                    Dashboard
+                  </Link>
                   <Link to="/triage" className="nav-link">
                     Triage Queue
                   </Link>
@@ -71,11 +79,17 @@ export function Navbar() {
               )}
               {user.role === "ADMIN" && (
                 <>
+                  <Link to="/dashboard" className="nav-link">
+                    Dashboard
+                  </Link>
                   <Link to="/users" className="nav-link">
                     Users
                   </Link>
                   <Link to="/users/import" className="nav-link">
                     Import Residents
+                  </Link>
+                  <Link to="/audit-logs" className="nav-link">
+                    Audit Trail
                   </Link>
                 </>
               )}
