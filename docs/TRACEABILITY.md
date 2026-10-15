@@ -24,4 +24,16 @@ This living document tracks each Included requirement (FR-01 to FR-18) from prob
 | FR-18 | P-4, SC-4 | UC-18 | SCR-05, SCR-13 | AuditService, PermissionPolicy | `audit_logs` | NFR-05 | `AuditService.get_request_history` (SCR-05 timeline), `AuditService.search_events`, `apps.audit.views.AuditLogListView`, `AuditLogPage` (SCR-13), `auditApi.getAuditLogs` (Slice 2, Slice 8) | TBD (TC-41) |
 
 ---
+
+## Non-Functional & Packaging Traceability Matrix (Phase 9: Hardening & Packaging)
+
+| NFR | Category | Target / Requirement | Implementation Components & Code Paths | Verification Tests |
+|---|---|---|---|---|
+| **NFR-07** | Usability & Compatibility | Mobile-first 360 px viewport with zero horizontal scroll; programmatic `<label>` on all form fields; touch target &ge; 44px. | `frontend/src/index.css` (360px viewport media queries, table-responsive wrappers, modal cards), all 13 screens (SCR-01 to SCR-13). | TBD (NT-05, Lighthouse &ge; 90) |
+| **NFR-08** | Data Integrity & Isolation | Database is isolated on an internal network; publishes NO port to the host machine in production. | `docker-compose.yml` (`db` on `internal` network only, no `ports:` published), `backend/Dockerfile` (non-root `appuser`). | TBD (TC-25, NT-06) |
+| **NFR-09** | Reproducibility & OpenAPI | 3-command setup from clean clone; OpenAPI 3.0 specification endpoint at `GET /api/schema/`; typed frontend models. | `README.md` (3 commands), `drf-spectacular`, `backend/config/urls.py` (`/api/schema/`), `docs/openapi.yaml`, `frontend/src/api/schema.d.ts` (`openapi-typescript`). | TBD (NT-07) |
+| **NFR-10** | Maintainability & Layering | Strict layering (API, Service, Data); request status assigned only inside `TransitionService.execute`; linters pass. | Layered architecture in `backend/apps/*`, `ruff.toml` (`ruff check backend`), `frontend/eslint.config.js`. | TBD (NT-08) |
+| **NFR-11** | Security Baseline | Security headers (CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy); 2MB reverse proxy request body limit. | `deploy/nginx/conf.d/default.conf` (`add_header`, `client_max_body_size 2M`), `deploy/nginx/nginx.conf`. | TBD (NT-09, ST-01, ST-02) |
+
+---
 *Note: FR-19 through FR-23 are excluded/deferred per Section 3.3 of the Final Project Report and are not built.*

@@ -1,5 +1,6 @@
 """API views for locations and categories reference endpoints (FR-05, SCR-04)."""
 
+from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -15,6 +16,12 @@ class LocationListView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        operation_id="api_locations_list",
+        summary="List active locations",
+        description="List active locations scoped to the caller's assigned residence (FR-05, SCR-04).",
+        responses={200: LocationSerializer(many=True)},
+    )
     def get(self, request: Request) -> Response:
         user = request.user
         qs = Location.objects.filter(is_active=True)
@@ -40,6 +47,12 @@ class FaultCategoryListView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        operation_id="api_categories_list",
+        summary="List fault categories",
+        description="List approved active fault categories in Moroka Hall (FR-05, SCR-04).",
+        responses={200: FaultCategorySerializer(many=True)},
+    )
     def get(self, request: Request) -> Response:
         categories = FaultCategory.objects.filter(is_active=True).order_by("name")
         serializer = FaultCategorySerializer(categories, many=True)

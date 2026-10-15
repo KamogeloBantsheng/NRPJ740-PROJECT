@@ -1,0 +1,1339 @@
+openapi: 3.0.3
+info:
+  title: NRPJ740 Campus Maintenance Request & Work-Order Management API
+  version: 1.0.0
+  description: OpenAPI 3.0 specification for Moroka Hall Residence Maintenance System
+    at Sol Plaatje University (NFR-09, Section 6.3)
+paths:
+  /api/audit-logs/:
+    get:
+      operationId: api_audit_logs_list
+      description: Global audit log search and inspection endpoint for administrators
+        (FR-18, SCR-13, TC-41).
+      summary: Search system audit logs
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogSearchResponse'
+          description: ''
+  /api/auth/csrf:
+    get:
+      operationId: api_auth_csrf
+      description: Issues CSRF cookie token for single-origin web client writes.
+      summary: Get CSRF token
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsrfTokenResponse'
+          description: ''
+  /api/auth/login:
+    post:
+      operationId: api_auth_login
+      description: Authenticates user, starts 8-hour session, and rotates session
+        ID (FR-01, SCR-01).
+      summary: User sign-in
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserMe'
+          description: ''
+  /api/auth/logout:
+    post:
+      operationId: api_auth_logout
+      description: Invalidates user session and clears authentication cookies (FR-01).
+      summary: User sign-out
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+          description: ''
+  /api/auth/password:
+    post:
+      operationId: api_auth_change_password
+      description: Changes password for authenticated user with Argon2id hashing (FR-02,
+        SCR-02).
+      summary: Change password
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangePasswordResponse'
+          description: ''
+  /api/categories/:
+    get:
+      operationId: api_categories_list
+      description: List approved active fault categories in Moroka Hall (FR-05, SCR-04).
+      summary: List fault categories
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FaultCategory'
+          description: ''
+  /api/dashboard/:
+    get:
+      operationId: api_dashboard_metrics
+      description: Role-scoped maintenance aggregates for Supervisor, Warden, and
+        Admin (FR-16, SCR-10).
+      summary: Operational dashboard metrics
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardMetricsResponse'
+          description: ''
+  /api/health/:
+    get:
+      operationId: api_health_check
+      description: Verifies application runtime and PostgreSQL database connectivity
+        (NFR-09).
+      summary: Health check endpoint
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckDegradedResponse'
+          description: ''
+  /api/locations/:
+    get:
+      operationId: api_locations_list
+      description: List active locations scoped to the caller's assigned residence
+        (FR-05, SCR-04).
+      summary: List active locations
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Location'
+          description: ''
+  /api/me:
+    get:
+      operationId: api_auth_me
+      description: Retrieves profile and role for current authenticated user (FR-01).
+      summary: Current user profile
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserMe'
+          description: ''
+  /api/requests/:
+    get:
+      operationId: api_requests_list
+      description: Return role-scoped requests for the authenticated user (SCR-03,
+        BR-05).
+      summary: List maintenance requests
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MaintenanceRequestList'
+          description: ''
+    post:
+      operationId: api_requests_create
+      description: Submit a new fault report under Table 5.1 T1 rules (SCR-04, FR-05).
+      summary: Submit maintenance request
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SubmitRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SubmitRequestRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceRequestDetail'
+          description: ''
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceRequestDetail'
+          description: ''
+  /api/requests/{id}/:
+    get:
+      operationId: api_requests_retrieve
+      description: Retrieve full details of a specific maintenance request (SCR-05,
+        FR-06).
+      summary: Retrieve maintenance request details
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceRequestDetail'
+          description: ''
+  /api/requests/{id}/timeline/:
+    get:
+      operationId: api_requests_timeline
+      description: Retrieve chronological audit timeline for a maintenance request
+        (FR-18, SCR-05).
+      summary: Retrieve request audit timeline
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RequestTimelineEvent'
+          description: ''
+  /api/requests/{id}/transition/:
+    post:
+      operationId: api_requests_transition
+      description: Execute a lifecycle state transition with row lock and concurrency
+        guard (Table 5.1, ADR-02).
+      summary: Execute request lifecycle transition
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitionExecuteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransitionExecuteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransitionExecuteRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaintenanceRequestDetail'
+          description: ''
+  /api/technicians/:
+    get:
+      operationId: api_technicians_list
+      description: List active technicians with workload counts for supervisor dispatch
+        (SCR-07, FR-10, FR-11).
+      summary: List active technicians for dispatch
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TechnicianItem'
+          description: ''
+  /api/users/:
+    get:
+      operationId: api_users_list
+      description: List users with optional search, role, status and residence filters
+        (FR-03, SCR-11).
+      summary: List users
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserAdminItem'
+          description: ''
+    post:
+      operationId: api_users_create
+      description: Create a single user account with auto-generated temporary password
+        (FR-03, SCR-11).
+      summary: Create user account
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserCreateResponse'
+          description: ''
+  /api/users/{id}/:
+    get:
+      operationId: api_users_retrieve
+      description: Retrieve profile details for a specific user (FR-03, SCR-11).
+      summary: Retrieve user details
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAdminItem'
+          description: ''
+    patch:
+      operationId: api_users_patch
+      description: Update profile, role, active flag, residence, or student number
+        (FR-03, BR-07, SCR-11).
+      summary: Update user details
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUserUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUserUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUserUpdateRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAdminItem'
+          description: ''
+  /api/users/{id}/reset-password/:
+    post:
+      operationId: api_users_reset_password
+      description: Generate a new temporary password and force password change on
+        next login (FR-03, SCR-11).
+      summary: Reset user password
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResetPasswordResponse'
+          description: ''
+  /api/users/import-csv/:
+    post:
+      operationId: api_users_import_csv
+      description: All-or-nothing batch import of resident accounts from CSV file
+        (FR-04, SCR-12).
+      summary: Batch import residents CSV
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserImportCsvResponse'
+          description: ''
+  /api/work-queue/:
+    get:
+      operationId: api_work_queue_list
+      description: List requests currently assigned to the authenticated technician
+        (FR-13, SCR-09, BR-04).
+      summary: List assigned technician work orders
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MaintenanceRequestList'
+          description: ''
+components:
+  schemas:
+    ActionEnum:
+      enum:
+      - REQUEST_SUBMITTED
+      - CLARIFICATION_REQUESTED
+      - CLARIFICATION_PROVIDED
+      - REQUEST_APPROVED
+      - REQUEST_REJECTED
+      - WORK_ASSIGNED
+      - WORK_REASSIGNED
+      - WORK_STARTED
+      - WORK_COMPLETED
+      - REQUEST_VERIFIED_CLOSED
+      - REQUEST_REOPENED
+      - USER_CREATED
+      - USER_IMPORTED
+      - USER_ROLE_CHANGED
+      - USER_DEACTIVATED
+      - USER_REACTIVATED
+      - PASSWORD_RESET
+      - PASSWORD_CHANGED
+      - LOGIN_FAILED
+      type: string
+      description: |-
+        * `REQUEST_SUBMITTED` - Request Submitted
+        * `CLARIFICATION_REQUESTED` - Clarification Requested
+        * `CLARIFICATION_PROVIDED` - Clarification Provided
+        * `REQUEST_APPROVED` - Request Approved
+        * `REQUEST_REJECTED` - Request Rejected
+        * `WORK_ASSIGNED` - Work Assigned
+        * `WORK_REASSIGNED` - Work Reassigned
+        * `WORK_STARTED` - Work Started
+        * `WORK_COMPLETED` - Work Completed
+        * `REQUEST_VERIFIED_CLOSED` - Request Verified Closed
+        * `REQUEST_REOPENED` - Request Reopened
+        * `USER_CREATED` - User Created
+        * `USER_IMPORTED` - User Imported
+        * `USER_ROLE_CHANGED` - User Role Changed
+        * `USER_DEACTIVATED` - User Deactivated
+        * `USER_REACTIVATED` - User Reactivated
+        * `PASSWORD_RESET` - Password Reset
+        * `PASSWORD_CHANGED` - Password Changed
+        * `LOGIN_FAILED` - Login Failed
+    AuditEventItem:
+      type: object
+      description: Detailed audit event representation for administrative inspection.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        occurred_at:
+          type: string
+          format: date-time
+        action:
+          $ref: '#/components/schemas/ActionEnum'
+        action_label:
+          type: string
+          readOnly: true
+        actor:
+          allOf:
+          - $ref: '#/components/schemas/AuditUserMini'
+          readOnly: true
+        target_user:
+          allOf:
+          - $ref: '#/components/schemas/AuditUserMini'
+          readOnly: true
+        request_id:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          nullable: true
+        tracking_number:
+          type: string
+          nullable: true
+          readOnly: true
+        work_order_id:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          nullable: true
+        from_status:
+          type: string
+          nullable: true
+          maxLength: 20
+        to_status:
+          type: string
+          nullable: true
+          maxLength: 20
+        note:
+          type: string
+          nullable: true
+        details: {}
+      required:
+      - action
+      - action_label
+      - actor
+      - id
+      - target_user
+      - tracking_number
+    AuditLogSearchResponse:
+      type: object
+      properties:
+        total_count:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEventItem'
+        available_actions:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - available_actions
+      - events
+      - limit
+      - offset
+      - total_count
+    AuditUserMini:
+      type: object
+      description: Compact user representation for actor/target in audit trail.
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        role:
+          type: string
+      required:
+      - email
+      - full_name
+      - id
+      - role
+    BlankEnum:
+      enum:
+      - ''
+    ChangePasswordRequest:
+      type: object
+      description: Payload for voluntary or forced password update (SCR-02).
+      properties:
+        current_password:
+          type: string
+          writeOnly: true
+        new_password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - new_password
+    ChangePasswordResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+      - message
+    CsrfTokenResponse:
+      type: object
+      properties:
+        csrfToken:
+          type: string
+      required:
+      - csrfToken
+    DashboardMetricsResponse:
+      type: object
+      properties:
+        status_distribution:
+          type: object
+          additionalProperties:
+            type: integer
+        priority_distribution:
+          type: object
+          additionalProperties:
+            type: integer
+        category_counts:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        aging_brackets:
+          type: object
+          additionalProperties:
+            type: integer
+        mean_time_to_close_hours:
+          type: number
+          format: double
+          nullable: true
+        closed_tickets_sample_size:
+          type: integer
+        active_work_orders_count:
+          type: integer
+        scoped_residence:
+          type: string
+          nullable: true
+      required:
+      - active_work_orders_count
+      - aging_brackets
+      - category_counts
+      - closed_tickets_sample_size
+      - mean_time_to_close_hours
+      - priority_distribution
+      - scoped_residence
+      - status_distribution
+    FaultCategory:
+      type: object
+      description: Serializer for approved maintenance fault categories.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 60
+      required:
+      - id
+      - name
+    HealthCheckDegradedResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        database:
+          type: string
+      required:
+      - database
+      - status
+    HealthCheckResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        database:
+          type: string
+      required:
+      - database
+      - status
+    KindEnum:
+      enum:
+      - ROOM
+      - COMMON_AREA
+      type: string
+      description: |-
+        * `ROOM` - Room
+        * `COMMON_AREA` - Common Area
+    Location:
+      type: object
+      description: Serializer for room and common area locations within a residence.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        residence_id:
+          type: integer
+          readOnly: true
+        block:
+          type: string
+          maxLength: 30
+        floor:
+          type: integer
+          maximum: 32767
+          minimum: -32768
+        label:
+          type: string
+          maxLength: 60
+        kind:
+          $ref: '#/components/schemas/KindEnum'
+        display_name:
+          type: string
+          readOnly: true
+      required:
+      - block
+      - display_name
+      - floor
+      - id
+      - kind
+      - label
+      - residence_id
+    LoginRequest:
+      type: object
+      description: Payload for user sign-in (SCR-01).
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - email
+      - password
+    LogoutResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+      - message
+    MaintenanceRequestDetail:
+      type: object
+      description: Full detail serializer with nested resident, location, category,
+        work order, and timeline (SCR-05).
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        tracking_number:
+          type: string
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        priority:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/PriorityEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        description:
+          type: string
+        client_token:
+          type: string
+          format: uuid
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+        resident:
+          type: object
+          additionalProperties: {}
+          nullable: true
+          readOnly: true
+        location:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        category:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        active_work_order:
+          type: object
+          additionalProperties: {}
+          nullable: true
+          readOnly: true
+        work_orders:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          readOnly: true
+        timeline:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          readOnly: true
+      required:
+      - active_work_order
+      - category
+      - client_token
+      - created_at
+      - description
+      - id
+      - location
+      - resident
+      - timeline
+      - tracking_number
+      - updated_at
+      - work_orders
+    MaintenanceRequestList:
+      type: object
+      description: Compact summary serializer for request queue and list views (SCR-03).
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        tracking_number:
+          type: string
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        priority:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/PriorityEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        category_name:
+          type: string
+          readOnly: true
+        location_label:
+          type: string
+          readOnly: true
+        location_block:
+          type: string
+          readOnly: true
+        location_floor:
+          type: integer
+          readOnly: true
+        location_kind:
+          type: string
+          readOnly: true
+        description_snippet:
+          type: string
+          readOnly: true
+        resident_name:
+          type: string
+          nullable: true
+          readOnly: true
+        assigned_technician_name:
+          type: string
+          nullable: true
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - assigned_technician_name
+      - category_name
+      - created_at
+      - description_snippet
+      - id
+      - location_block
+      - location_floor
+      - location_kind
+      - location_label
+      - resident_name
+      - tracking_number
+    NullEnum:
+      enum:
+      - null
+    PatchedUserUpdateRequest:
+      type: object
+      description: Payload for updating user profile, role, or active status (FR-03,
+        BR-07, SCR-11).
+      properties:
+        full_name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        is_active:
+          type: boolean
+        residence_id:
+          type: integer
+          nullable: true
+        student_number:
+          type: string
+          nullable: true
+          maxLength: 20
+    PriorityEnum:
+      enum:
+      - LOW
+      - MEDIUM
+      - HIGH
+      - CRITICAL
+      type: string
+      description: |-
+        * `LOW` - Low
+        * `MEDIUM` - Medium
+        * `HIGH` - High
+        * `CRITICAL` - Critical
+    RequestTimelineEvent:
+      type: object
+      description: Chronological lifecycle events for request timeline display (FR-18,
+        SCR-05).
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        occurred_at:
+          type: string
+          format: date-time
+        action:
+          $ref: '#/components/schemas/ActionEnum'
+        actor_role:
+          type: string
+          readOnly: true
+        actor_name:
+          type: string
+          readOnly: true
+        from_status:
+          type: string
+          nullable: true
+          maxLength: 20
+        to_status:
+          type: string
+          nullable: true
+          maxLength: 20
+        note:
+          type: string
+          nullable: true
+        details: {}
+      required:
+      - action
+      - actor_name
+      - actor_role
+      - id
+    RoleEnum:
+      enum:
+      - RESIDENT
+      - TECHNICIAN
+      - SUPERVISOR
+      - WARDEN
+      - ADMIN
+      type: string
+      description: |-
+        * `RESIDENT` - Resident
+        * `TECHNICIAN` - Technician
+        * `SUPERVISOR` - Supervisor
+        * `WARDEN` - Warden
+        * `ADMIN` - Admin
+    StatusEnum:
+      enum:
+      - SUBMITTED
+      - NEEDS_CLARIFICATION
+      - REJECTED
+      - APPROVED
+      - ASSIGNED
+      - IN_PROGRESS
+      - WORK_COMPLETED
+      - REOPENED
+      - VERIFIED_CLOSED
+      type: string
+      description: |-
+        * `SUBMITTED` - Submitted
+        * `NEEDS_CLARIFICATION` - Needs Clarification
+        * `REJECTED` - Rejected
+        * `APPROVED` - Approved
+        * `ASSIGNED` - Assigned
+        * `IN_PROGRESS` - In Progress
+        * `WORK_COMPLETED` - Work Completed
+        * `REOPENED` - Reopened
+        * `VERIFIED_CLOSED` - Verified Closed
+    SubmitRequestRequest:
+      type: object
+      description: Payload for submitting a new maintenance fault report (FR-05, SCR-04).
+      properties:
+        location_id:
+          type: integer
+        category_id:
+          type: integer
+        description:
+          type: string
+          minLength: 10
+          maxLength: 2000
+        client_token:
+          type: string
+          format: uuid
+      required:
+      - category_id
+      - description
+      - location_id
+    TechnicianItem:
+      type: object
+      description: Active technician listing with current active task workload for
+        dispatch (SCR-07).
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        full_name:
+          type: string
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        is_active:
+          type: boolean
+        active_tasks_count:
+          type: integer
+          readOnly: true
+          default: 0
+      required:
+      - active_tasks_count
+      - email
+      - full_name
+      - id
+    TransitionExecuteRequest:
+      type: object
+      description: Payload for executing a lifecycle state transition (Table 5.1).
+      properties:
+        action:
+          type: string
+          minLength: 1
+        expected_status:
+          type: string
+          minLength: 1
+        note:
+          type: string
+          default: ''
+        priority:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/PriorityEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        technician_id:
+          type: integer
+          nullable: true
+      required:
+      - action
+      - expected_status
+    UserAdminItem:
+      type: object
+      description: User item detail for Admin User Management table (SCR-11).
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        full_name:
+          type: string
+          readOnly: true
+        student_number:
+          type: string
+          readOnly: true
+          nullable: true
+        role:
+          allOf:
+          - $ref: '#/components/schemas/RoleEnum'
+          readOnly: true
+        residence:
+          type: integer
+          readOnly: true
+          nullable: true
+        residence_name:
+          type: string
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        must_change_password:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        last_login:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        active_work_orders_count:
+          type: integer
+          readOnly: true
+          default: 0
+      required:
+      - active_work_orders_count
+      - created_at
+      - email
+      - full_name
+      - id
+      - is_active
+      - last_login
+      - must_change_password
+      - residence
+      - residence_name
+      - role
+      - student_number
+    UserCreateRequest:
+      type: object
+      description: Payload for creating a new user by an administrator (FR-03, SCR-11).
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+        full_name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        residence_id:
+          type: integer
+          nullable: true
+        student_number:
+          type: string
+          nullable: true
+          maxLength: 20
+      required:
+      - email
+      - full_name
+      - role
+    UserCreateResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/UserAdminItem'
+        temporary_password:
+          type: string
+      required:
+      - temporary_password
+      - user
+    UserImportCsvResponse:
+      type: object
+      properties:
+        total_rows:
+          type: integer
+        imported_count:
+          type: integer
+        created_accounts:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        credentials_file_content:
+          type: string
+      required:
+      - created_accounts
+      - credentials_file_content
+      - imported_count
+      - total_rows
+    UserMe:
+      type: object
+      description: Profile serialization for current authenticated user (/api/me).
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        full_name:
+          type: string
+          readOnly: true
+        student_number:
+          type: string
+          readOnly: true
+          nullable: true
+        role:
+          allOf:
+          - $ref: '#/components/schemas/RoleEnum'
+          readOnly: true
+        residence:
+          type: integer
+          readOnly: true
+          nullable: true
+        residence_name:
+          type: string
+          readOnly: true
+        must_change_password:
+          type: boolean
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        last_login:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - email
+      - full_name
+      - id
+      - is_active
+      - last_login
+      - must_change_password
+      - residence
+      - residence_name
+      - role
+      - student_number
+    UserResetPasswordResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        temporary_password:
+          type: string
+      required:
+      - message
+      - temporary_password
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid

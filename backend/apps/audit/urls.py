@@ -6,5 +6,4 @@ from apps.audit.views import AuditLogListView
 
 urlpatterns = [
     path("audit-logs/", AuditLogListView.as_view(), name="audit-log-list"),
-    path("audit-logs", AuditLogListView.as_view(), name="audit-log-list-noslash"),
 ]

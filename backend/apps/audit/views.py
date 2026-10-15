@@ -1,7 +1,6 @@
-"""Views for administrative audit trail inspection (FR-18, SCR-13, TC-41)."""
-
 from config.exceptions import ForbiddenException
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -18,6 +17,23 @@ class AuditLogListView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        operation_id="api_audit_logs_list",
+        summary="Search system audit logs",
+        description="Global audit log search and inspection endpoint for administrators (FR-18, SCR-13, TC-41).",
+        responses={
+            200: inline_serializer(
+                name="AuditLogSearchResponse",
+                fields={
+                    "total_count": serializers.IntegerField(),
+                    "limit": serializers.IntegerField(),
+                    "offset": serializers.IntegerField(),
+                    "events": AuditEventItemSerializer(many=True),
+                    "available_actions": serializers.ListField(child=serializers.DictField()),
+                },
+            )
+        },
+    )
     def get(self, request: Request) -> Response:
         if request.user.role != Role.ADMIN:
             raise ForbiddenException("Only administrators can access the system audit log.")

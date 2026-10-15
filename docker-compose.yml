@@ -1,0 +1,101 @@
+# NPRJ740 Production Docker Compose Stack (Section 5.8, Table 5.10, ADR-04)
+# Four-container architecture:
+#   proxy   : Nginx reverse proxy on host port 8080 (security headers, CSP, 2MB body limit)
+#   api     : Django Gunicorn WSGI running as non-root user (appuser UID 10001)
+#   db      : PostgreSQL 16 on internal network only (no published host port)
+#   migrate : One-shot container applying DDL migrations and idempotent seed data as owner
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: nrpj740-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-nrpj740_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_SUPERUSER_PASSWORD:-postgres_master_secret}
+    volumes:
+      - ./deploy/db/01-init-roles.sql:/docker-entrypoint-initdb.d/01-init-roles.sql:ro
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nrpj_owner -d ${DB_NAME:-nrpj740_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nrpj740-migrate
+    command: >
+      sh -c "python manage.py migrate --noinput && python manage.py seed_data"
+    environment:
+      DB_NAME: ${DB_NAME:-nrpj740_dev}
+      DB_USER: ${DB_OWNER_USER:-nrpj_owner}
+      DB_PASSWORD: ${DB_OWNER_PASSWORD:-change-me-owner-secret}
+      DB_HOST: db
+      DB_PORT: 5432
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-insecure-compose-secret-key-32charsmin}
+      DJANGO_DEBUG: "false"
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-DemoPass#2026}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: "no"
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nrpj740-api
+    restart: unless-stopped
+    environment:
+      DB_NAME: ${DB_NAME:-nrpj740_dev}
+      DB_USER: ${DB_APP_USER:-nrpj_app}
+      DB_PASSWORD: ${DB_APP_PASSWORD:-change-me-app-secret}
+      DB_HOST: db
+      DB_PORT: 5432
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-insecure-compose-secret-key-32charsmin}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+      ALLOWED_HOSTS: localhost,127.0.0.1,api,proxy
+      CSRF_TRUSTED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
+      SESSION_COOKIE_AGE: ${SESSION_COOKIE_AGE:-28800}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - internal
+      - edge
+    expose:
+      - "8000"
+
+  proxy:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nrpj740-proxy
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8080}:80"
+    depends_on:
+      - api
+    networks:
+      - edge
+
+networks:
+  edge:
+    driver: bridge
+  internal:
+    driver: bridge
+
+volumes:
+  db_data:

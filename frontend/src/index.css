@@ -2595,3 +2595,100 @@ body {
   }
 }
 
+/* ==========================================================================
+   Mobile-First 360px Viewport Hardening (NFR-07 / NT-05)
+   ========================================================================== */
+@media (max-width: 640px) {
+  body {
+    font-size: 0.9375rem;
+  }
+
+  .page-container {
+    padding: 0.75rem 0.5rem;
+  }
+
+  .page-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .page-header-row .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .filter-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .filter-group,
+  .filter-item {
+    width: 100%;
+  }
+
+  .filter-stats {
+    text-align: left;
+  }
+
+  .navbar-inner {
+    padding: 0.5rem 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .nav-links {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .nav-link {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  .modal-overlay {
+    padding: 0.5rem;
+  }
+
+  .modal-card {
+    max-width: 100%;
+    padding: 1.25rem 1rem;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .modal-actions .btn {
+    width: 100%;
+  }
+
+  .table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--radius-md);
+  }
+
+  .kpi-summary-grid,
+  .dashboard-kpi-grid,
+  .aging-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .request-timeline {
+    padding-left: 0.5rem;
+  }
+
+  .timeline-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+}
+
+

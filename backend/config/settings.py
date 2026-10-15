@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     "apps.audit",
     "apps.workflow",
     "rest_framework",
+    "drf_spectacular",
 ]
 
 AUTH_USER_MODEL = "accounts.User"
@@ -129,6 +130,18 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
     "EXCEPTION_HANDLER": "config.exceptions.standard_exception_handler",
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "NRPJ740 Campus Maintenance Request & Work-Order Management API",
+    "DESCRIPTION": (
+        "OpenAPI 3.0 specification for Moroka Hall Residence Maintenance System "
+        "at Sol Plaatje University (NFR-09, Section 6.3)"
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
 }
 
 # Demo Data Seeding Settings (AGENT_BRIEF item 8)

@@ -4,7 +4,8 @@ import uuid
 
 from config.exceptions import ForbiddenException, NotFoundException, ValidationException
 from django.db.models import Case, Count, IntegerField, Q, Value, When
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -31,6 +32,12 @@ class RequestListCreateView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        operation_id="api_requests_list",
+        summary="List maintenance requests",
+        description="Return role-scoped requests for the authenticated user (SCR-03, BR-05).",
+        responses={200: MaintenanceRequestListSerializer(many=True)},
+    )
     def get(self, request: Request) -> Response:
         """Return role-scoped requests for the authenticated user (SCR-03, BR-05)."""
         qs = PermissionPolicy.scope_requests(request.user)
@@ -59,6 +66,16 @@ class RequestListCreateView(APIView):
         )
         return Response(serializer.data)
 
+    @extend_schema(
+        operation_id="api_requests_create",
+        summary="Submit maintenance request",
+        description="Submit a new fault report under Table 5.1 T1 rules (SCR-04, FR-05).",
+        request=SubmitRequestSerializer,
+        responses={
+            201: MaintenanceRequestDetailSerializer,
+            200: MaintenanceRequestDetailSerializer,
+        },
+    )
     def post(self, request: Request) -> Response:
         """Submit a new fault report under Table 5.1 T1 rules (SCR-04, FR-05)."""
         if request.user.role != Role.RESIDENT:
@@ -103,6 +120,12 @@ class RequestDetailView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        operation_id="api_requests_retrieve",
+        summary="Retrieve maintenance request details",
+        description="Retrieve full details of a specific maintenance request (SCR-05, FR-06).",
+        responses={200: MaintenanceRequestDetailSerializer},
+    )
     def get(self, request: Request, pk: int) -> Response:
         req = (
             MaintenanceRequest.objects.select_related(
@@ -123,6 +146,12 @@ class RequestTimelineView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        operation_id="api_requests_timeline",
+        summary="Retrieve request audit timeline",
+        description="Retrieve chronological audit timeline for a maintenance request (FR-18, SCR-05).",
+        responses={200: RequestTimelineEventSerializer(many=True)},
+    )
     def get(self, request: Request, pk: int) -> Response:
         req = (
             MaintenanceRequest.objects.select_related("resident", "location")
@@ -146,6 +175,13 @@ class RequestTransitionView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        operation_id="api_requests_transition",
+        summary="Execute request lifecycle transition",
+        description="Execute a lifecycle state transition with row lock and concurrency guard (Table 5.1, ADR-02).",
+        request=TransitionExecuteSerializer,
+        responses={200: MaintenanceRequestDetailSerializer},
+    )
     def post(self, request: Request, pk: int) -> Response:
         req = (
             MaintenanceRequest.objects.select_related(
@@ -189,6 +225,12 @@ class TechnicianListView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        operation_id="api_technicians_list",
+        summary="List active technicians for dispatch",
+        description="List active technicians with workload counts for supervisor dispatch (SCR-07, FR-10, FR-11).",
+        responses={200: TechnicianItemSerializer(many=True)},
+    )
     def get(self, request: Request) -> Response:
         if request.user.role not in (Role.SUPERVISOR, Role.ADMIN):
             raise ForbiddenException("Only supervisors and admins can view technician dispatch availability.")
@@ -212,6 +254,12 @@ class TechnicianWorkQueueView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        operation_id="api_work_queue_list",
+        summary="List assigned technician work orders",
+        description="List requests currently assigned to the authenticated technician (FR-13, SCR-09, BR-04).",
+        responses={200: MaintenanceRequestListSerializer(many=True)},
+    )
     def get(self, request: Request) -> Response:
         if request.user.role != Role.TECHNICIAN:
             raise ForbiddenException("Only technicians can view their assigned work queue.")
@@ -265,6 +313,26 @@ class DashboardView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        operation_id="api_dashboard_metrics",
+        summary="Operational dashboard metrics",
+        description="Role-scoped maintenance aggregates for Supervisor, Warden, and Admin (FR-16, SCR-10).",
+        responses={
+            200: inline_serializer(
+                name="DashboardMetricsResponse",
+                fields={
+                    "status_distribution": serializers.DictField(child=serializers.IntegerField()),
+                    "priority_distribution": serializers.DictField(child=serializers.IntegerField()),
+                    "category_counts": serializers.ListField(child=serializers.DictField()),
+                    "aging_brackets": serializers.DictField(child=serializers.IntegerField()),
+                    "mean_time_to_close_hours": serializers.FloatField(allow_null=True),
+                    "closed_tickets_sample_size": serializers.IntegerField(),
+                    "active_work_orders_count": serializers.IntegerField(),
+                    "scoped_residence": serializers.CharField(allow_null=True),
+                },
+            )
+        },
+    )
     def get(self, request: Request) -> Response:
         residence_id = request.query_params.get("residence_id")
         parsed_res_id = int(residence_id) if residence_id and residence_id.isdigit() else None
@@ -275,16 +343,21 @@ class DashboardView(APIView):
         )
         return Response(metrics, status=status.HTTP_200_OK)
 
+    @extend_schema(exclude=True)
     def post(self, request: Request) -> Response:
         raise ForbiddenException("The operational dashboard is strictly read-only.")
 
+    @extend_schema(exclude=True)
     def put(self, request: Request) -> Response:
         raise ForbiddenException("The operational dashboard is strictly read-only.")
 
+    @extend_schema(exclude=True)
     def patch(self, request: Request) -> Response:
         raise ForbiddenException("The operational dashboard is strictly read-only.")
 
+    @extend_schema(exclude=True)
     def delete(self, request: Request) -> Response:
         raise ForbiddenException("The operational dashboard is strictly read-only.")
+
 
 

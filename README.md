@@ -21,41 +21,66 @@ A robust, role-based maintenance management web application connecting Residents
 
 ---
 
-## 3. Local Development Setup
+## 3. Production Deployment (3-Command Bootstrap per Section 8 / NFR-09)
 
-### Step 1: Clone and Configure Environment
-```powershell
+To run the complete production-grade stack (Nginx reverse proxy, Django WSGI as non-root user, PostgreSQL 16 on internal network, and automated migrations/seed):
+
+```bash
+# 1. Clone the repository and enter directory
+git clone https://github.com/KamogeloBantsheng/NRPJ740-PROJECT.git && cd NRPJ740-PROJECT
+
+# 2. Create environment configuration
 cp .env.example .env
-```
-*(Review and customize secrets in `.env` if required)*
 
-### Step 2: Start the Database Container
+# 3. Build images, run migrations & seed, and start the 4-container stack
+docker compose up --build
+```
+
+Open **`http://localhost:8080`** in your browser.
+
+### Seeded Demo Accounts (Evaluation Profile)
+The evaluation profile pre-seeds one demo user per role with password configured in `DEMO_PASSWORD` (default: `change-me-demo-password` or `DemoPass#2026`):
+
+| Role | Email | Notes |
+|---|---|---|
+| **Resident** | `resident@example.test` | Room 101, Block A, Moroka Hall |
+| **Supervisor** | `supervisor@example.test` | Triage, assignment, close & reopen |
+| **Technician** | `technician@example.test` | Work orders queue & job execution |
+| **Warden** | `warden@example.test` | Read-only operational dashboard |
+| **Admin** | `admin@example.test` | User administration & audit search |
+
+---
+
+## 4. Local Development Loop (Fast HMR)
+
+For active feature development:
+
+### Step 1: Start Isolated PostgreSQL Dev Container
 ```powershell
 docker compose -f docker-compose.dev.yml up -d
 ```
 
-### Step 3: Set up Backend
+### Step 2: Run Django Backend
 ```powershell
-python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 python backend/manage.py migrate
 python backend/manage.py runserver 127.0.0.1:8000
 ```
 
-### Step 4: Set up Frontend
+### Step 3: Run Vite Frontend Dev Server
 In a separate terminal:
 ```powershell
-npm install --prefix frontend
-npm run dev --prefix frontend
+cd frontend
+npm run dev
 ```
-Open **`http://localhost:5173`** in your browser. All `/api` requests are proxied directly to the Django server.
+Open **`http://localhost:5173`** (Vite proxies `/api` directly to Django on port 8000).
 
 ---
 
-## 4. Verification & Health Check
+## 5. Verification & Quality Gates
 
-- **Django Health Endpoint:** `http://127.0.0.1:8000/api/health/`
-- **Proxied Vite Health Endpoint:** `http://localhost:5173/api/health/`
-- **Lint Backend:** `ruff check backend`
-- **Lint & Build Frontend:** `npm run lint --prefix frontend` and `npm run build --prefix frontend`
+- **API Health Check:** `GET http://localhost:8080/api/health/` (or `http://localhost:8000/api/health/`)
+- **OpenAPI 3.0 Schema:** `GET http://localhost:8080/api/schema/` (or `python backend/manage.py spectacular --file docs/openapi.yaml`)
+- **Frontend Types Generation:** `npm run generate-api-types --prefix frontend`
+- **Backend Linting:** `python -m ruff check backend`
+- **Frontend Linting & Build:** `npm run lint --prefix frontend` and `npm run build --prefix frontend`

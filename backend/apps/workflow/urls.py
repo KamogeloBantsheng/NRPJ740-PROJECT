@@ -14,7 +14,6 @@ from apps.workflow.views import (
 
 urlpatterns = [
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
-    path("dashboard", DashboardView.as_view(), name="dashboard-noslash"),
     path("requests/", RequestListCreateView.as_view(), name="request-list-create"),
     path("requests/<int:pk>/", RequestDetailView.as_view(), name="request-detail"),
     path("requests/<int:pk>/timeline/", RequestTimelineView.as_view(), name="request-timeline"),

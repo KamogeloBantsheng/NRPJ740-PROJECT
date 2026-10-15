@@ -2,7 +2,8 @@
 
 from config.exceptions import NotFoundException, ValidationException
 from django.middleware.csrf import get_token
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -28,6 +29,17 @@ class CsrfTokenView(APIView):
     permission_classes = (AllowAny,)
     authentication_classes = ()
 
+    @extend_schema(
+        operation_id="api_auth_csrf",
+        summary="Get CSRF token",
+        description="Issues CSRF cookie token for single-origin web client writes.",
+        responses={
+            200: inline_serializer(
+                name="CsrfTokenResponse",
+                fields={"csrfToken": serializers.CharField()},
+            )
+        },
+    )
     def get(self, request: Request) -> Response:
         token = get_token(request)
         return Response({"csrfToken": token})
@@ -39,6 +51,13 @@ class LoginView(APIView):
     permission_classes = (AllowAny,)
     authentication_classes = ()
 
+    @extend_schema(
+        operation_id="api_auth_login",
+        summary="User sign-in",
+        description="Authenticates user, starts 8-hour session, and rotates session ID (FR-01, SCR-01).",
+        request=LoginSerializer,
+        responses={200: UserMeSerializer},
+    )
     def post(self, request: Request) -> Response:
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -57,6 +76,18 @@ class LogoutView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        operation_id="api_auth_logout",
+        summary="User sign-out",
+        description="Invalidates user session and clears authentication cookies (FR-01).",
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="LogoutResponse",
+                fields={"message": serializers.CharField()},
+            )
+        },
+    )
     def post(self, request: Request) -> Response:
         AuthService.logout(request)
         return Response({"message": "Successfully signed out."}, status=status.HTTP_200_OK)
@@ -67,6 +98,18 @@ class ChangePasswordView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        operation_id="api_auth_change_password",
+        summary="Change password",
+        description="Changes password for authenticated user with Argon2id hashing (FR-02, SCR-02).",
+        request=ChangePasswordSerializer,
+        responses={
+            200: inline_serializer(
+                name="ChangePasswordResponse",
+                fields={"message": serializers.CharField()},
+            )
+        },
+    )
     def post(self, request: Request) -> Response:
         serializer = ChangePasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -89,6 +132,12 @@ class MeView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        operation_id="api_auth_me",
+        summary="Current user profile",
+        description="Retrieves profile and role for current authenticated user (FR-01).",
+        responses={200: UserMeSerializer},
+    )
     def get(self, request: Request) -> Response:
         return Response(UserMeSerializer(request.user).data, status=status.HTTP_200_OK)
 
@@ -98,6 +147,12 @@ class UserAdminListCreateView(APIView):
 
     permission_classes = (IsAuthenticated, IsAdmin)
 
+    @extend_schema(
+        operation_id="api_users_list",
+        summary="List users",
+        description="List users with optional search, role, status and residence filters (FR-03, SCR-11).",
+        responses={200: UserAdminItemSerializer(many=True)},
+    )
     def get(self, request: Request) -> Response:
         search = request.query_params.get("search", "")
         role = request.query_params.get("role", "")
@@ -121,6 +176,21 @@ class UserAdminListCreateView(APIView):
         serializer = UserAdminItemSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        operation_id="api_users_create",
+        summary="Create user account",
+        description="Create a single user account with auto-generated temporary password (FR-03, SCR-11).",
+        request=UserCreateSerializer,
+        responses={
+            201: inline_serializer(
+                name="UserCreateResponse",
+                fields={
+                    "user": UserAdminItemSerializer(),
+                    "temporary_password": serializers.CharField(),
+                },
+            )
+        },
+    )
     def post(self, request: Request) -> Response:
         serializer = UserCreateSerializer(data=request.data)
         if not serializer.is_valid():
@@ -150,12 +220,25 @@ class UserAdminDetailUpdateView(APIView):
 
     permission_classes = (IsAuthenticated, IsAdmin)
 
+    @extend_schema(
+        operation_id="api_users_retrieve",
+        summary="Retrieve user details",
+        description="Retrieve profile details for a specific user (FR-03, SCR-11).",
+        responses={200: UserAdminItemSerializer},
+    )
     def get(self, request: Request, pk: int) -> Response:
         user = User.objects.filter(id=pk).first()
         if not user:
             raise NotFoundException(f"User {pk} not found.")
         return Response(UserAdminItemSerializer(user).data, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        operation_id="api_users_patch",
+        summary="Update user details",
+        description="Update profile, role, active flag, residence, or student number (FR-03, BR-07, SCR-11).",
+        request=UserUpdateSerializer,
+        responses={200: UserAdminItemSerializer},
+    )
     def patch(self, request: Request, pk: int) -> Response:
         user = User.objects.filter(id=pk).first()
         if not user:
@@ -184,6 +267,21 @@ class UserAdminResetPasswordView(APIView):
 
     permission_classes = (IsAuthenticated, IsAdmin)
 
+    @extend_schema(
+        operation_id="api_users_reset_password",
+        summary="Reset user password",
+        description="Generate a new temporary password and force password change on next login (FR-03, SCR-11).",
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="UserResetPasswordResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "temporary_password": serializers.CharField(),
+                },
+            )
+        },
+    )
     def post(self, request: Request, pk: int) -> Response:
         user = User.objects.filter(id=pk).first()
         if not user:
@@ -206,6 +304,23 @@ class UserAdminCsvImportView(APIView):
     permission_classes = (IsAuthenticated, IsAdmin)
     parser_classes = (MultiPartParser, FormParser)
 
+    @extend_schema(
+        operation_id="api_users_import_csv",
+        summary="Batch import residents CSV",
+        description="All-or-nothing batch import of resident accounts from CSV file (FR-04, SCR-12).",
+        request=None,
+        responses={
+            201: inline_serializer(
+                name="UserImportCsvResponse",
+                fields={
+                    "total_rows": serializers.IntegerField(),
+                    "imported_count": serializers.IntegerField(),
+                    "created_accounts": serializers.ListField(child=serializers.DictField()),
+                    "credentials_file_content": serializers.CharField(),
+                },
+            )
+        },
+    )
     def post(self, request: Request) -> Response:
         file_obj = request.FILES.get("file")
         if file_obj:
