@@ -85,6 +85,33 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 
+      - name: Initialize Database Roles
+        run: |
+          python -c "
+          import time, psycopg
+          for i in range(15):
+              try:
+                  with psycopg.connect('postgresql://postgres:postgres_password@localhost:5432/nrpj740_test', autocommit=True) as conn:
+                      with conn.cursor() as cur:
+                          cur.execute(\"\"\"
+                          DO \$\$
+                          BEGIN
+                              IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'nrpj_app') THEN
+                                  CREATE ROLE nrpj_app WITH LOGIN PASSWORD 'change-me-app-secret';
+                              END IF;
+                              IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'nrpj_owner') THEN
+                                  CREATE ROLE nrpj_owner WITH LOGIN PASSWORD 'change-me-owner-secret';
+                              END IF;
+                          END
+                          \$\$;
+                          \"\"\")
+                  print('PostgreSQL roles nrpj_app and nrpj_owner initialized successfully.')
+                  break
+              except Exception as e:
+                  print(f'Waiting for PostgreSQL service: {e}')
+                  time.sleep(2)
+          "
+
       - name: Run Pytest
         env:
           DJANGO_SECRET_KEY: ci-test-secret-key-32-chars-minimum!

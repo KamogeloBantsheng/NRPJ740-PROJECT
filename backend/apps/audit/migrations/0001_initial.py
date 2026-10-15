@@ -59,9 +59,15 @@ class Migration(migrations.Migration):
             FOR EACH STATEMENT
             EXECUTE FUNCTION prevent_audit_log_tamper();
 
-            -- 4. Restrict application runtime role to SELECT and INSERT only
-            REVOKE UPDATE, DELETE, TRUNCATE ON audit_logs FROM nrpj_app;
-            GRANT SELECT, INSERT ON audit_logs TO nrpj_app;
+            -- 4. Restrict application runtime role to SELECT and INSERT only (if role exists)
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nrpj_app') THEN
+                    REVOKE UPDATE, DELETE, TRUNCATE ON audit_logs FROM nrpj_app;
+                    GRANT SELECT, INSERT ON audit_logs TO nrpj_app;
+                END IF;
+            END
+            $$;
             """,
             reverse_sql="""
             DROP TRIGGER IF EXISTS trg_audit_logs_no_truncate ON audit_logs;
