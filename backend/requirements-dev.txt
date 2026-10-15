@@ -1,2 +1,5 @@
-# NPRJ740 Backend Dev/Lint Dependencies (Phase 0 Pinned)
+# NPRJ740 Backend Dev/Lint/Test Dependencies (Phase 10 Pinned)
 ruff==0.16.10
+pytest==8.3.5
+pytest-django==4.14.0
+
