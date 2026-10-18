@@ -10,7 +10,7 @@ from django.utils import timezone
 from apps.accounts.models import Role, User
 from apps.audit.models import AuditAction
 from apps.audit.services import AuditService
-from apps.locations.models import FaultCategory, Location, Residence
+from apps.locations.models import FaultCategory, Location, LocationKind, Residence
 from apps.workflow.models import (
     EndReason,
     MaintenanceRequest,
@@ -38,24 +38,41 @@ class TransitionService:
         description: str,
         client_token: uuid.UUID | None = None,
     ) -> tuple[MaintenanceRequest, bool]:
-        """T1: Initial fault report submission by a resident.
+        """T1: Initial fault report submission by a resident or residence warden.
 
-        Enforces resident role, residence boundary (INV-4), active master data,
+        Enforces resident/warden role, residence boundary (INV-4), active master data,
         trimmed description length (10 to 2000 chars), idempotency via client_token,
         and logs REQUEST_SUBMITTED audit event.
         """
         # 1. Actor check
-        if resident.role != Role.RESIDENT:
-            raise ForbiddenException("Only residents can submit maintenance requests.")
+        if resident.role not in (Role.RESIDENT, Role.WARDEN):
+            raise ForbiddenException("Only residents and residence wardens can submit maintenance requests.")
         if not resident.is_active:
             raise ForbiddenException("Your account is deactivated.")
 
-        # 2. Scope & location validation (INV-4: Must be in the Resident's residence)
+        # 2. Scope & location validation (INV-4: Must be in the user's residence)
         if not resident.residence_id or location.residence_id != resident.residence_id:
             raise ValidationException(
                 "Location must be within your assigned residence.",
                 fields={"location": ["Selected location is outside your assigned residence."]},
             )
+
+        # 2b. Student room scoping guard:
+        # Residents can only submit for their assigned room or common areas.
+        # Wardens can choose from all rooms and common areas in their residence.
+        if resident.role == Role.RESIDENT:
+            is_assigned_room = (
+                resident.assigned_location_id is not None
+                and location.id == resident.assigned_location_id
+            )
+            is_common_area = (location.kind == LocationKind.COMMON_AREA)
+            if not (is_assigned_room or is_common_area):
+                raise ValidationException(
+                    "Residents can only submit requests for their assigned room or common areas.",
+                    fields={
+                        "location": ["Residents can only submit requests for their assigned room or common areas."]
+                    },
+                )
 
         if not location.is_active:
             raise ValidationException(

@@ -82,7 +82,7 @@ export function App() {
                 <Route
                   path="/requests/new"
                   element={
-                    <ProtectedRoute allowedRoles={["RESIDENT"]}>
+                    <ProtectedRoute allowedRoles={["RESIDENT", "WARDEN"]}>
                       <SubmitRequestPage />
                     </ProtectedRoute>
                   }

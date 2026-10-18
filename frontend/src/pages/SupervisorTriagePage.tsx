@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { workflowApi } from "../api/workflow";
 import { StatusBadge } from "../components/StatusBadge";
+import { AppIcon } from "../components/AppIcon";
 import type { RequestStatus } from "../types/workflow";
 
 type StatusTab = "TRIAGE_ALL" | "SUBMITTED" | "NEEDS_CLARIFICATION" | "ALL";
@@ -244,7 +245,7 @@ export function SupervisorTriagePage() {
         </div>
       ) : isError ? (
         <div className="card empty-card" role="alert">
-          <div className="empty-icon">⚠️</div>
+          <div className="empty-icon"><AppIcon name="alert" size={40} color="#d97706" /></div>
           <h2 className="empty-title">Failed to load maintenance queue</h2>
           <p className="empty-text">There was an error communicating with the server.</p>
           <button type="button" onClick={() => refetch()} className="btn btn-primary">
@@ -253,7 +254,7 @@ export function SupervisorTriagePage() {
         </div>
       ) : filteredRequests.length === 0 ? (
         <div className="card empty-card">
-          <div className="empty-icon">✅</div>
+          <div className="empty-icon"><AppIcon name="check-circle" size={40} color="#10b981" /></div>
           <h2 className="empty-title">Queue is clear!</h2>
           <p className="empty-text">
             {activeTab === "TRIAGE_ALL"

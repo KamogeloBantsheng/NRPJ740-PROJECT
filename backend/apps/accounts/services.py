@@ -23,7 +23,7 @@ from django.utils import timezone
 from apps.accounts.models import Role, User
 from apps.audit.models import AuditAction
 from apps.audit.services import AuditService
-from apps.locations.models import Residence
+from apps.locations.models import Location, LocationKind, Residence
 
 
 def get_client_ip(request: HttpRequest) -> str:
@@ -235,6 +235,7 @@ class UserAdminService:
         full_name: str,
         role: str,
         residence_id: int | None = None,
+        assigned_location_id: int | None = None,
         student_number: str | None = None,
     ) -> tuple[User, str]:
         """Create a new user with temporary password and enforced constraint checks (FR-03, BR-07)."""
@@ -271,14 +272,29 @@ class UserAdminService:
                     "Residence cannot be assigned to supervisors, technicians, or administrators."
                 ]
 
+        assigned_location = None
         if role == Role.RESIDENT:
             if not trimmed_student:
                 field_errors["student_number"] = ["Student number is required for residents."]
             elif User.objects.filter(student_number__iexact=trimmed_student).exists():
                 field_errors["student_number"] = ["A user with this student number already exists."]
+
+            if assigned_location_id:
+                assigned_location = Location.objects.filter(
+                    id=assigned_location_id,
+                    residence=residence,
+                    is_active=True,
+                    kind=LocationKind.ROOM,
+                ).first()
+                if not assigned_location:
+                    field_errors["assigned_location_id"] = [
+                        "Selected room does not exist, is inactive, or is not in the assigned residence."
+                    ]
         else:
             if trimmed_student:
                 field_errors["student_number"] = ["Student number can only be assigned to residents."]
+            if assigned_location_id:
+                field_errors["assigned_location_id"] = ["A room can only be assigned to residents."]
 
         if field_errors:
             raise ValidationException("Validation failed while creating user.", fields=field_errors)
@@ -290,6 +306,7 @@ class UserAdminService:
             full_name=trimmed_name,
             role=role,
             residence=residence,
+            assigned_location=assigned_location,
             student_number=trimmed_student,
             must_change_password=True,
             is_active=True,
@@ -320,6 +337,7 @@ class UserAdminService:
         role: str | None = None,
         is_active: bool | None = None,
         residence_id: int | None = None,
+        assigned_location_id: int | None = None,
         student_number: str | None = None,
     ) -> User:
         """Update user profile, role, or active status enforcing BR-07 guards (TC-06)."""
@@ -407,7 +425,38 @@ class UserAdminService:
                 details={"from_role": old_role, "to_role": role},
             )
 
-        # 3. Other fields
+        # 3. Room assignment update
+        target_role = role if role is not None else user.role
+        if target_role == Role.RESIDENT:
+            if assigned_location_id is not None:
+                if assigned_location_id in (0, -1):
+                    user.assigned_location = None
+                else:
+                    assigned_loc = Location.objects.filter(
+                        id=assigned_location_id,
+                        residence=user.residence,
+                        is_active=True,
+                        kind=LocationKind.ROOM,
+                    ).first()
+                    if not assigned_loc:
+                        raise ValidationException(
+                            "Invalid room selection.",
+                            fields={
+                                "assigned_location_id": [
+                                    "Selected room does not exist or is not a room in this residence."
+                                ]
+                            },
+                        )
+                    user.assigned_location = assigned_loc
+        else:
+            if assigned_location_id:
+                raise ValidationException(
+                    "Assigned location can only be set for residents.",
+                    fields={"assigned_location_id": ["Assigned location can only be set for residents."]},
+                )
+            user.assigned_location = None
+
+        # 4. Other fields
         if full_name is not None and full_name.strip():
             user.full_name = full_name.strip()
 

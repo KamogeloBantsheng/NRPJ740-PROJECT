@@ -63,6 +63,13 @@ class User(AbstractBaseUser):
         on_delete=models.RESTRICT,
         related_name="users",
     )
+    assigned_location = models.ForeignKey(
+        "locations.Location",
+        null=True,
+        blank=True,
+        on_delete=models.RESTRICT,
+        related_name="assigned_residents",
+    )
     password = models.CharField(max_length=128)
     must_change_password = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
@@ -103,6 +110,13 @@ class User(AbstractBaseUser):
                     | ~models.Q(role=Role.RESIDENT)
                 ),
                 name="check_student_number_required_for_resident",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(assigned_location__isnull=True)
+                    | models.Q(role=Role.RESIDENT)
+                ),
+                name="check_assigned_location_for_resident_only",
             ),
         )
         ordering = ("email",)

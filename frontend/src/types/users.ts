@@ -13,6 +13,8 @@ export interface AdminUserItem {
   role: Role;
   residence: number | null;
   residence_name: string | null;
+  assigned_location?: number | null;
+  assigned_location_name?: string | null;
   is_active: boolean;
   must_change_password: boolean;
   created_at: string;
@@ -26,6 +28,7 @@ export interface CreateUserPayload {
   role: Role;
   student_number?: string;
   residence?: number | null;
+  assigned_location_id?: number | null;
 }
 
 export interface CreateUserResponse extends AdminUserItem {
@@ -37,6 +40,7 @@ export interface UpdateUserPayload {
   role?: Role;
   student_number?: string;
   residence?: number | null;
+  assigned_location_id?: number | null;
   is_active?: boolean;
 }
 

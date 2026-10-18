@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { workflowApi } from "../api/workflow";
 import { StatusBadge } from "../components/StatusBadge";
+import { AppIcon } from "../components/AppIcon";
 import type { RequestStatus } from "../types/workflow";
 
 const STATUS_FILTERS: { label: string; value: string }[] = [
@@ -93,7 +94,7 @@ export function ResidentRequestsPage() {
         </div>
       ) : requests.length === 0 ? (
         <div className="card empty-card">
-          <div className="empty-icon">📋</div>
+          <div className="empty-icon"><AppIcon name="clipboard" size={44} color="var(--color-primary)" /></div>
           <h2 className="empty-title">No maintenance requests found</h2>
           <p className="empty-description">
             {statusFilter

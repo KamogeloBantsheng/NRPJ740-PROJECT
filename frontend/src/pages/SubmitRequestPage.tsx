@@ -4,6 +4,7 @@
  */
 
 import { useState } from "react";
+import { AppIcon } from "../components/AppIcon";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { useForm, useWatch } from "react-hook-form";
@@ -11,6 +12,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { workflowApi } from "../api/workflow";
 import { AppError } from "../api/client";
+import { useAuth } from "../context/useAuth";
 
 const submitSchema = z.object({
   location_id: z.number().min(1, "Please select a room or common area location."),
@@ -27,6 +29,7 @@ type SubmitFormData = z.infer<typeof submitSchema>;
 export function SubmitRequestPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
 
   // Client token generated once per form session for idempotent submission (Table 5.7)
@@ -50,7 +53,7 @@ export function SubmitRequestPage() {
   } = useForm<SubmitFormData>({
     resolver: zodResolver(submitSchema),
     defaultValues: {
-      location_id: 0,
+      location_id: user?.assigned_location || 0,
       category_id: 0,
       description: "",
     },
@@ -87,12 +90,15 @@ export function SubmitRequestPage() {
     submitMutation.mutate(data);
   };
 
+  const backLink = user?.role === "WARDEN" ? "/dashboard" : "/requests";
+  const backLabel = user?.role === "WARDEN" ? "Back to Dashboard" : "Back to My Requests";
+
   return (
     <div className="page-container form-page-container">
       {/* Navigation Breadcrumb */}
       <div className="breadcrumb-nav">
-        <Link to="/requests" className="back-link">
-          &larr; Back to My Requests
+        <Link to={backLink} className="back-link">
+          {backLabel}
         </Link>
       </div>
 
@@ -104,9 +110,33 @@ export function SubmitRequestPage() {
           </p>
         </div>
 
+        {/* Room Assignment Scope Callout */}
+        {user?.role === "RESIDENT" && (
+          <div className="alert alert-info" style={{ marginBottom: "1.25rem", padding: "0.85rem 1rem", borderRadius: "8px", backgroundColor: "#fff1f2", border: "1px solid #fecdd3", color: "#9f1239" }}>
+            {user.assigned_location_name ? (
+              <div>
+                <strong>Your Assigned Room:</strong> {user.assigned_location_name}.
+                <div style={{ fontSize: "0.875rem", marginTop: "0.25rem", color: "#881337" }}>
+                  Per university policy, students may report faults for their assigned room and shared communal facilities only.
+                </div>
+              </div>
+            ) : (
+              <div>
+                <strong>Room Status:</strong> No private room currently assigned to your profile. You may report faults for communal areas.
+              </div>
+            )}
+          </div>
+        )}
+
+        {user?.role === "WARDEN" && (
+          <div className="alert alert-info" style={{ marginBottom: "1.25rem", padding: "0.85rem 1rem", borderRadius: "8px", backgroundColor: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" }}>
+            <strong>Residence Warden Mode:</strong> You have full residence oversight and may choose from all student rooms and common areas in {user.residence_name || "Moroka Hall"}.
+          </div>
+        )}
+
         {serverError && (
           <div className="alert alert-error" role="alert">
-            <span className="alert-icon">⚠️</span>
+            <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
             <span>{serverError}</span>
           </div>
         )}
@@ -124,17 +154,28 @@ export function SubmitRequestPage() {
               disabled={loadingLocations || submitMutation.isPending}
             >
               <option value="0">-- Select Room or Common Area --</option>
-              {locations.map((loc) => (
-                <option key={loc.id} value={loc.id}>
-                  {loc.display_name}
-                </option>
-              ))}
+              {locations.map((loc) => {
+                const isAssignedRoom = user?.assigned_location === loc.id;
+                const prefix = isAssignedRoom
+                  ? "[Assigned Room] "
+                  : loc.kind === "COMMON_AREA"
+                  ? "[Common Area] "
+                  : "[Room] ";
+                return (
+                  <option key={loc.id} value={loc.id}>
+                    {prefix}
+                    {loc.display_name}
+                  </option>
+                );
+              })}
             </select>
             {errors.location_id && (
               <span className="field-error">{errors.location_id.message}</span>
             )}
             <span className="field-hint">
-              Select your assigned room or the communal facility where the fault occurred.
+              {user?.role === "WARDEN"
+                ? "Select any student room or communal facility in the residence."
+                : "Select your assigned room or the communal facility where the fault occurred."}
             </span>
           </div>
 

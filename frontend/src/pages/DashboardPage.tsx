@@ -5,6 +5,7 @@
  */
 
 import { useState } from "react";
+import { AppIcon } from "../components/AppIcon";
 import { useQuery } from "@tanstack/react-query";
 import { reportingApi } from "../api/reporting";
 import { useAuth } from "../context/useAuth";
@@ -83,7 +84,7 @@ export function DashboardPage() {
             disabled={isFetching}
             title="Refresh dashboard metrics"
           >
-            {isFetching ? "Refreshing..." : "↻ Refresh"}
+            {isFetching ? "Refreshing..." : "Refresh"}
           </button>
         </div>
       </div>
@@ -115,7 +116,7 @@ export function DashboardPage() {
             <div className="card kpi-card border-top-primary">
               <div className="kpi-header">
                 <span className="kpi-label">Open Backlog</span>
-                <span className="kpi-icon">⚡</span>
+                <span className="kpi-icon"><AppIcon name="activity" size={20} color="var(--color-primary)" /></span>
               </div>
               <div className="kpi-value">{metrics.summary.open_requests}</div>
               <div className="kpi-subtext">
@@ -128,7 +129,7 @@ export function DashboardPage() {
             <div className="card kpi-card border-top-success">
               <div className="kpi-header">
                 <span className="kpi-label">Resolved Requests</span>
-                <span className="kpi-icon">✓</span>
+                <span className="kpi-icon"><AppIcon name="check-circle" size={20} color="#10b981" /></span>
               </div>
               <div className="kpi-value">{metrics.summary.closed_requests}</div>
               <div className="kpi-subtext">
@@ -144,7 +145,7 @@ export function DashboardPage() {
             <div className="card kpi-card border-top-info">
               <div className="kpi-header">
                 <span className="kpi-label">Mean Time to Closure</span>
-                <span className="kpi-icon">⏱</span>
+                <span className="kpi-icon"><AppIcon name="clock" size={20} color="#f59e0b" /></span>
               </div>
               <div className="kpi-value">
                 {metrics.summary.mean_time_to_closure_hours > 0
@@ -162,7 +163,7 @@ export function DashboardPage() {
             <div className="card kpi-card border-top-warning">
               <div className="kpi-header">
                 <span className="kpi-label">Avg Open Backlog Age</span>
-                <span className="kpi-icon">⏳</span>
+                <span className="kpi-icon"><AppIcon name="clock" size={20} color="#ea580c" /></span>
               </div>
               <div className="kpi-value">
                 {metrics.summary.average_open_age_hours > 0
@@ -315,7 +316,7 @@ export function DashboardPage() {
 
           {/* Privacy & Scope Disclaimer Notice (BR-04, TC-36) */}
           <div className="dashboard-privacy-notice card">
-            <span className="notice-icon">🛡</span>
+            <span className="notice-icon"><AppIcon name="shield" size={22} color="var(--color-primary)" /></span>
             <div className="notice-text">
               <strong>Anonymized Operational Data:</strong> This dashboard displays aggregated counts and velocity metrics. Resident personal identifiers (names, student numbers, room numbers) are strictly excluded in accordance with BR-04 privacy rules.
             </div>

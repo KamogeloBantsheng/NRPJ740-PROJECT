@@ -11,6 +11,7 @@ import { Link } from "react-router-dom";
 import { workflowApi } from "../api/workflow";
 import { AppError } from "../api/client";
 import { StatusBadge } from "../components/StatusBadge";
+import { AppIcon } from "../components/AppIcon";
 import type { MaintenanceRequestSummary, RequestStatus, TransitionPayload } from "../types/workflow";
 
 type DispatchTab = "PENDING_ASSIGNMENT" | "ACTIVE_DISPATCHES" | "ALL";
@@ -225,14 +226,14 @@ export function DispatchPage() {
       {/* Global Alerts */}
       {actionSuccess && (
         <div className="alert alert-success mb-3" role="alert">
-          <span className="alert-icon">✓</span>
+          <span className="alert-icon"><AppIcon name="check" size={16} /></span>
           <span>{actionSuccess}</span>
         </div>
       )}
 
       {technicians.length === 0 && !isTechsLoading && (
         <div className="alert alert-warning mb-3" role="alert">
-          <span className="alert-icon">⚠️</span>
+          <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
           <div>
             <strong>No active technicians available:</strong> There are currently no active
             technicians registered in the system. Work orders cannot be assigned until an administrator
@@ -354,7 +355,7 @@ export function DispatchPage() {
         </div>
       ) : isRequestsError ? (
         <div className="card empty-card" role="alert">
-          <div className="empty-icon">⚠️</div>
+          <div className="empty-icon"><AppIcon name="alert" size={36} color="#d97706" /></div>
           <h2 className="empty-title">Failed to load dispatch queue</h2>
           <p className="empty-text">There was an error communicating with the server.</p>
           <button
@@ -370,7 +371,7 @@ export function DispatchPage() {
         </div>
       ) : filteredRequests.length === 0 ? (
         <div className="card empty-card">
-          <div className="empty-icon">✅</div>
+          <div className="empty-icon"><AppIcon name="check-circle" size={36} color="#10b981" /></div>
           <h2 className="empty-title">No requests awaiting dispatch</h2>
           <p className="empty-text">
             {activeTab === "PENDING_ASSIGNMENT"
@@ -426,7 +427,7 @@ export function DispatchPage() {
                       {req.assigned_technician_name ? (
                         <div className="assigned-tech-cell">
                           <span className="assigned-tech-name">
-                            🔧 {req.assigned_technician_name}
+                            {req.assigned_technician_name}
                           </span>
                         </div>
                       ) : (
@@ -504,7 +505,7 @@ export function DispatchPage() {
             <form onSubmit={handleModalSubmit} className="modal-body">
               {formError && (
                 <div className="alert alert-error mb-3" role="alert">
-                  <span className="alert-icon">⚠️</span>
+                  <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
                   <span>{formError}</span>
                 </div>
               )}

@@ -6,10 +6,13 @@
  */
 
 import { useState, useMemo } from "react";
+import { AppIcon } from "../components/AppIcon";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { usersApi, type UserFilters } from "../api/users";
+import { workflowApi } from "../api/workflow";
 import { AppError } from "../api/client";
+import type { LocationItem } from "../types/workflow";
 import type {
   AdminUserItem,
   CreateUserPayload,
@@ -62,6 +65,12 @@ export function UserAdminPage() {
   } = useQuery({
     queryKey: ["admin-users", queryFilters],
     queryFn: () => usersApi.getUsers(queryFilters),
+  });
+
+  // Query: Locations list (for student room assignments)
+  const { data: locations = [] } = useQuery({
+    queryKey: ["locations"],
+    queryFn: () => workflowApi.getLocations(),
   });
 
   // Mutation: Create user
@@ -162,7 +171,7 @@ export function UserAdminPage() {
 
         <div className="page-header-actions">
           <Link to="/users/import" className="btn btn-secondary">
-            <span className="btn-icon">📁</span>
+            
             Import Residents (CSV)
           </Link>
           <button
@@ -183,7 +192,7 @@ export function UserAdminPage() {
       {/* Global Banners */}
       {actionSuccess && (
         <div className="alert-banner alert-success" role="status" aria-live="polite">
-          <span className="alert-icon">✓</span>
+          <span className="alert-icon"><AppIcon name="check" size={16} /></span>
           <div className="alert-text">{actionSuccess}</div>
           <button
             type="button"
@@ -198,7 +207,7 @@ export function UserAdminPage() {
 
       {actionError && (
         <div className="alert-banner alert-danger" role="alert">
-          <span className="alert-icon">⚠</span>
+          <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
           <div className="alert-text">{actionError}</div>
           <button
             type="button"
@@ -275,7 +284,7 @@ export function UserAdminPage() {
               className="btn btn-secondary btn-refresh"
               title="Refresh users list"
             >
-              ↻ Refresh
+              Refresh
             </button>
           </div>
         </div>
@@ -313,7 +322,7 @@ export function UserAdminPage() {
           </div>
         ) : users.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon">👥</div>
+            <div className="empty-icon"><AppIcon name="users" size={40} color="var(--color-primary)" /></div>
             <p className="empty-title">No users found</p>
             <p className="empty-subtitle">
               No accounts match the selected search criteria or filters.
@@ -354,7 +363,18 @@ export function UserAdminPage() {
                     {/* Student Number or Residence */}
                     <td>
                       {u.student_number ? (
-                        <span className="mono-code">{u.student_number}</span>
+                        <div>
+                          <span className="mono-code">{u.student_number}</span>
+                          {u.assigned_location_name ? (
+                            <div className="font-sm" style={{ color: "var(--color-primary)", fontWeight: 600, marginTop: "2px" }}>
+                              Room: {u.assigned_location_name}
+                            </div>
+                          ) : (
+                            <div className="text-muted font-sm" style={{ marginTop: "2px" }}>
+                              Room: Unassigned
+                            </div>
+                          )}
+                        </div>
                       ) : u.residence_name ? (
                         <span className="residence-cell">{u.residence_name}</span>
                       ) : (
@@ -465,6 +485,7 @@ export function UserAdminPage() {
       {/* Modal 1: Create User Modal */}
       {isCreateModalOpen && (
         <CreateUserModal
+          locations={locations}
           onClose={() => setIsCreateModalOpen(false)}
           onSubmit={(payload) => createUserMutation.mutate(payload)}
           isSubmitting={createUserMutation.isPending}
@@ -476,6 +497,7 @@ export function UserAdminPage() {
       {editingUser && (
         <EditUserModal
           user={editingUser}
+          locations={locations}
           onClose={() => setEditingUser(null)}
           onSubmit={(payload) =>
             updateUserMutation.mutate({ id: editingUser.id, payload })
@@ -531,7 +553,7 @@ export function UserAdminPage() {
             </div>
             <div className="modal-body">
               <div className="alert-banner alert-warning-subtle" style={{ margin: 0 }}>
-                <span className="alert-icon">🔒</span>
+                <span className="alert-icon"><AppIcon name="lock" size={16} /></span>
                 <div className="alert-text">
                   <strong>One-Time Temporary Password:</strong> The user is required to change this password on initial login (NFR-02). Securely share these credentials now.
                 </div>
@@ -564,7 +586,7 @@ export function UserAdminPage() {
                     className="btn btn-secondary btn-copy"
                     id="copy-pwd-btn"
                   >
-                    {copiedNotice ? "Copied! ✓" : "Copy"}
+                    {copiedNotice ? "Copied" : "Copy"}
                   </button>
                 </div>
               </div>
@@ -591,6 +613,7 @@ export function UserAdminPage() {
 // -----------------------------------------------------------------------------
 
 interface CreateUserModalProps {
+  locations: LocationItem[];
   onClose: () => void;
   onSubmit: (payload: CreateUserPayload) => void;
   isSubmitting: boolean;
@@ -598,6 +621,7 @@ interface CreateUserModalProps {
 }
 
 function CreateUserModal({
+  locations,
   onClose,
   onSubmit,
   isSubmitting,
@@ -607,6 +631,7 @@ function CreateUserModal({
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState<Role>("RESIDENT");
   const [studentNumber, setStudentNumber] = useState("");
+  const [assignedLocationId, setAssignedLocationId] = useState<number | undefined>(undefined);
   const [localError, setLocalError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -631,6 +656,7 @@ function CreateUserModal({
       full_name: fullName.trim(),
       role,
       student_number: role === "RESIDENT" ? studentNumber.trim() : undefined,
+      assigned_location_id: role === "RESIDENT" ? (assignedLocationId ?? null) : null,
     });
   };
 
@@ -654,7 +680,7 @@ function CreateUserModal({
         <form onSubmit={handleSubmit} className="modal-body">
           {(errorMessage || localError) && (
             <div className="alert-banner alert-danger" role="alert">
-              <span className="alert-icon">⚠</span>
+              <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
               <div className="alert-text">{localError || errorMessage}</div>
             </div>
           )}
@@ -708,20 +734,45 @@ function CreateUserModal({
           </div>
 
           {role === "RESIDENT" && (
-            <div className="filter-group">
-              <label htmlFor="create-student-number" className="filter-label">
-                Student Number <span className="text-danger">*</span>
-              </label>
-              <input
-                id="create-student-number"
-                type="text"
-                required
-                placeholder="e.g. ST2024001"
-                className="filter-select"
-                value={studentNumber}
-                onChange={(e) => setStudentNumber(e.target.value)}
-              />
-            </div>
+            <>
+              <div className="filter-group">
+                <label htmlFor="create-student-number" className="filter-label">
+                  Student Number <span className="text-danger">*</span>
+                </label>
+                <input
+                  id="create-student-number"
+                  type="text"
+                  required
+                  placeholder="e.g. ST2024001"
+                  className="filter-select"
+                  value={studentNumber}
+                  onChange={(e) => setStudentNumber(e.target.value)}
+                />
+              </div>
+
+              <div className="filter-group">
+                <label htmlFor="create-assigned-location" className="filter-label">
+                  Assigned Room <span className="text-secondary-subtle font-normal">(Limits student maintenance requests)</span>
+                </label>
+                <select
+                  id="create-assigned-location"
+                  className="filter-select"
+                  value={assignedLocationId ?? ""}
+                  onChange={(e) =>
+                    setAssignedLocationId(e.target.value ? Number(e.target.value) : undefined)
+                  }
+                >
+                  <option value="">-- No Room Assigned --</option>
+                  {locations
+                    .filter((loc) => loc.kind === "ROOM")
+                    .map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.display_name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </>
           )}
 
           <p className="modal-info-text">
@@ -754,6 +805,7 @@ function CreateUserModal({
 
 interface EditUserModalProps {
   user: AdminUserItem;
+  locations: LocationItem[];
   onClose: () => void;
   onSubmit: (payload: UpdateUserPayload) => void;
   isSubmitting: boolean;
@@ -762,6 +814,7 @@ interface EditUserModalProps {
 
 function EditUserModal({
   user,
+  locations,
   onClose,
   onSubmit,
   isSubmitting,
@@ -770,6 +823,9 @@ function EditUserModal({
   const [role, setRole] = useState<Role>(user.role);
   const [fullName, setFullName] = useState(user.full_name);
   const [studentNumber, setStudentNumber] = useState(user.student_number || "");
+  const [assignedLocationId, setAssignedLocationId] = useState<number | undefined>(
+    user.assigned_location ?? undefined
+  );
   const [localError, setLocalError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -785,6 +841,7 @@ function EditUserModal({
       role,
       full_name: fullName.trim(),
       student_number: role === "RESIDENT" ? studentNumber.trim() : undefined,
+      assigned_location_id: role === "RESIDENT" ? (assignedLocationId ?? null) : null,
     });
   };
 
@@ -808,7 +865,7 @@ function EditUserModal({
         <form onSubmit={handleSubmit} className="modal-body">
           {(errorMessage || localError) && (
             <div className="alert-banner alert-danger" role="alert">
-              <span className="alert-icon">⚠</span>
+              <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
               <div className="alert-text">{localError || errorMessage}</div>
             </div>
           )}
@@ -818,7 +875,7 @@ function EditUserModal({
             <div><strong>Current Role:</strong> {user.role}</div>
             {user.role === "TECHNICIAN" && user.active_work_orders_count > 0 && (
               <div className="text-warning">
-                ⚠ Technician currently has {user.active_work_orders_count} active work orders. Role changes are blocked until orders are closed or reassigned.
+                Technician currently has {user.active_work_orders_count} active work orders. Role changes are blocked until orders are closed or reassigned.
               </div>
             )}
           </div>
@@ -856,19 +913,44 @@ function EditUserModal({
           </div>
 
           {role === "RESIDENT" && (
-            <div className="filter-group">
-              <label htmlFor="edit-student-number" className="filter-label">
-                Student Number <span className="text-danger">*</span>
-              </label>
-              <input
-                id="edit-student-number"
-                type="text"
-                required
-                className="filter-select"
-                value={studentNumber}
-                onChange={(e) => setStudentNumber(e.target.value)}
-              />
-            </div>
+            <>
+              <div className="filter-group">
+                <label htmlFor="edit-student-number" className="filter-label">
+                  Student Number <span className="text-danger">*</span>
+                </label>
+                <input
+                  id="edit-student-number"
+                  type="text"
+                  required
+                  className="filter-select"
+                  value={studentNumber}
+                  onChange={(e) => setStudentNumber(e.target.value)}
+                />
+              </div>
+
+              <div className="filter-group">
+                <label htmlFor="edit-assigned-location" className="filter-label">
+                  Assigned Room <span className="text-secondary-subtle font-normal">(Limits student maintenance requests)</span>
+                </label>
+                <select
+                  id="edit-assigned-location"
+                  className="filter-select"
+                  value={assignedLocationId ?? ""}
+                  onChange={(e) =>
+                    setAssignedLocationId(e.target.value ? Number(e.target.value) : undefined)
+                  }
+                >
+                  <option value="">-- No Room Assigned --</option>
+                  {locations
+                    .filter((loc) => loc.kind === "ROOM")
+                    .map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.display_name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </>
           )}
 
           <div className="modal-actions">
@@ -930,7 +1012,7 @@ function DeactivateConfirmModal({
         <div className="modal-body">
           {errorMessage && (
             <div className="alert-banner alert-danger" role="alert">
-              <span className="alert-icon">⚠</span>
+              <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
               <div className="alert-text">{errorMessage}</div>
             </div>
           )}
@@ -1005,7 +1087,7 @@ function ResetPasswordConfirmModal({
         <div className="modal-body">
           {errorMessage && (
             <div className="alert-banner alert-danger" role="alert">
-              <span className="alert-icon">⚠</span>
+              <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
               <div className="alert-text">{errorMessage}</div>
             </div>
           )}

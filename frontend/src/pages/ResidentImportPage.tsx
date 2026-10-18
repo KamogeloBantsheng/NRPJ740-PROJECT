@@ -5,6 +5,7 @@
  */
 
 import { useState, useRef } from "react";
+import { AppIcon } from "../components/AppIcon";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usersApi } from "../api/users";
@@ -178,7 +179,7 @@ export function ResidentImportPage() {
 
         <div className="page-header-actions">
           <Link to="/users" className="btn btn-secondary">
-            ← Back to Users
+            Back to Users
           </Link>
           <button
             type="button"
@@ -194,7 +195,7 @@ export function ResidentImportPage() {
       {/* Import Specification Callout */}
       <section className="card import-specs-card" aria-label="CSV format specifications">
         <div className="import-specs-header">
-          <span className="specs-icon">📋</span>
+          <span className="specs-icon"><AppIcon name="file" size={20} color="var(--color-primary)" /></span>
           <h2 className="specs-title">CSV File Requirements & All-or-Nothing Rules</h2>
         </div>
         <div className="import-specs-grid">
@@ -247,7 +248,7 @@ export function ResidentImportPage() {
             aria-hidden="true"
           />
           <div className="dropzone-inner">
-            <div className="dropzone-icon">📁</div>
+            <div className="dropzone-icon"><AppIcon name="folder" size={40} color="var(--color-primary)" /></div>
             <p className="dropzone-prompt">
               <strong>Click to upload</strong> or drag and drop your CSV file here
             </p>
@@ -258,7 +259,7 @@ export function ResidentImportPage() {
         {/* Client File Error */}
         {clientFileError && (
           <div className="alert-banner alert-danger mt-3" role="alert">
-            <span className="alert-icon">⚠</span>
+            <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
             <div className="alert-text">{clientFileError}</div>
           </div>
         )}
@@ -267,7 +268,7 @@ export function ResidentImportPage() {
         {selectedFile && (
           <div className="file-selected-card">
             <div className="file-meta">
-              <span className="file-icon">📄</span>
+              <span className="file-icon"><AppIcon name="file" size={24} color="var(--color-primary)" /></span>
               <div className="file-details">
                 <span className="file-name">{selectedFile.name}</span>
                 <span className="file-size">
@@ -320,7 +321,7 @@ export function ResidentImportPage() {
       {errorMessage && (
         <section className="card bad-rows-card" aria-label="Import validation failure details">
           <div className="alert-banner alert-danger" style={{ margin: 0 }} role="alert">
-            <span className="alert-icon">❌</span>
+            <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
             <div className="alert-text">
               <strong>Import Rejected (All-or-Nothing Rollback Applied):</strong> {errorMessage}
             </div>
@@ -372,7 +373,7 @@ export function ResidentImportPage() {
       {importResult && (
         <section className="card import-success-card" aria-label="Batch import results">
           <div className="alert-banner alert-success" style={{ margin: 0 }} role="status">
-            <span className="alert-icon">✓</span>
+            <span className="alert-icon"><AppIcon name="check" size={16} /></span>
             <div className="alert-text">
               <strong>Batch Import Successful:</strong> Created {importResult.created_count} resident accounts!
             </div>
@@ -391,7 +392,7 @@ export function ResidentImportPage() {
               className="btn btn-primary"
               id="download-credentials-btn"
             >
-              📥 Download Credentials CSV
+              Download Credentials CSV
             </button>
           </div>
 
@@ -429,7 +430,7 @@ export function ResidentImportPage() {
                         onClick={() => handleCopySinglePassword(cred.temporary_password, idx)}
                         className="btn btn-sm btn-secondary"
                       >
-                        {copiedIndex === idx ? "Copied! ✓" : "Copy"}
+                        {copiedIndex === idx ? "Copied" : "Copy"}
                       </button>
                     </td>
                   </tr>

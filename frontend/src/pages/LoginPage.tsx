@@ -77,11 +77,12 @@ export function LoginPage() {
     <main className="auth-page-container">
       <div className="auth-card">
         <div className="auth-header">
-          <div className="auth-logo-badge" aria-hidden="true">
-            SPU
+          <div className="auth-tag-pill">
+            <span className="auth-tag-dot" aria-hidden="true" />
+            SPU RESIDENCE OPERATIONS
           </div>
-          <h1 className="auth-title">Campus Maintenance System</h1>
-          <p className="auth-subtitle">Moroka Hall of Residence &bull; Sign in to continue</p>
+          <h1 className="auth-title">Moroka Hall Maintenance</h1>
+          <p className="auth-subtitle">Sol Plaatje University &bull; Sign in with your university account</p>
         </div>
 
         {errorMessage && (

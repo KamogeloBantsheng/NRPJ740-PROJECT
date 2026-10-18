@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from apps.accounts.models import Role, User
-from apps.locations.models import Residence
+from apps.locations.models import Location, LocationKind, Residence
 
 DEMO_USERS = [
     {
@@ -14,6 +14,7 @@ DEMO_USERS = [
         "role": Role.RESIDENT,
         "student_number": "20240001",
         "requires_residence": True,
+        "room_label": "A.203",
     },
     {
         "email": "technician@spu.ac.za",
@@ -83,6 +84,17 @@ class Command(BaseCommand):
             for user_def in DEMO_USERS:
                 email = user_def["email"]
                 residence = moroka if user_def["requires_residence"] else None
+                assigned_loc = None
+                if user_def.get("room_label") and moroka:
+                    assigned_loc = Location.objects.filter(
+                        residence=moroka,
+                        label=user_def["room_label"],
+                        kind=LocationKind.ROOM,
+                    ).first() or Location.objects.filter(
+                        residence=moroka,
+                        kind=LocationKind.ROOM,
+                    ).first()
+
                 user = User.objects.filter(email__iexact=email).first()
 
                 if user:
@@ -90,12 +102,14 @@ class Command(BaseCommand):
                     user.role = user_def["role"]
                     user.student_number = user_def["student_number"]
                     user.residence = residence
+                    user.assigned_location = assigned_loc
                     user.is_active = True
                     user.must_change_password = False
                     user.set_password(password)
                     user.save()
                     updated_count += 1
-                    self.stdout.write(f"Updated demo user: {email} ({user_def['role']})")
+                    loc_info = f", Room: {assigned_loc.label}" if assigned_loc else ""
+                    self.stdout.write(f"Updated demo user: {email} ({user_def['role']}{loc_info})")
                 else:
                     User.objects.create_user(
                         email=email,
@@ -104,11 +118,13 @@ class Command(BaseCommand):
                         password=password,
                         residence=residence,
                         student_number=user_def["student_number"],
+                        assigned_location=assigned_loc,
                         is_active=True,
                         must_change_password=False,
                     )
                     created_count += 1
-                    self.stdout.write(f"Created demo user: {email} ({user_def['role']})")
+                    loc_info = f", Room: {assigned_loc.label}" if assigned_loc else ""
+                    self.stdout.write(f"Created demo user: {email} ({user_def['role']}{loc_info})")
 
             self.stdout.write(
                 self.style.SUCCESS(f"Demo users seeding complete: {created_count} created, {updated_count} updated.")

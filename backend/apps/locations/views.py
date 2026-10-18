@@ -1,5 +1,6 @@
 """API views for locations and categories reference endpoints (FR-05, SCR-04)."""
 
+from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -7,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import Role
-from apps.locations.models import FaultCategory, Location
+from apps.locations.models import FaultCategory, Location, LocationKind
 from apps.locations.serializers import FaultCategorySerializer, LocationSerializer
 
 
@@ -26,8 +27,18 @@ class LocationListView(APIView):
         user = request.user
         qs = Location.objects.filter(is_active=True)
 
-        # Scoping: Residents and Wardens see only locations within their assigned residence
-        if user.role in (Role.RESIDENT, Role.WARDEN):
+        # Scoping per user role:
+        # Residents see strictly their assigned room plus common areas in their residence
+        if user.role == Role.RESIDENT:
+            if user.residence_id:
+                resident_filter = Q(residence_id=user.residence_id, kind=LocationKind.COMMON_AREA)
+                if user.assigned_location_id:
+                    resident_filter |= Q(id=user.assigned_location_id)
+                qs = qs.filter(resident_filter)
+            else:
+                qs = qs.none()
+        # Wardens can choose from all rooms and common areas in their residence
+        elif user.role == Role.WARDEN:
             if user.residence_id:
                 qs = qs.filter(residence_id=user.residence_id)
             else:

@@ -11,6 +11,7 @@ import { Link } from "react-router-dom";
 import { workflowApi } from "../api/workflow";
 import { AppError } from "../api/client";
 import { StatusBadge } from "../components/StatusBadge";
+import { AppIcon } from "../components/AppIcon";
 import type { MaintenanceRequestSummary, RequestStatus, TransitionPayload } from "../types/workflow";
 
 type VerificationTab = "AWAITING_VERIFICATION" | "REOPENED" | "CLOSED" | "ALL";
@@ -206,13 +207,13 @@ export function VerificationPage() {
       {/* Global Alerts */}
       {actionSuccess && (
         <div className="alert alert-success mb-3" role="alert">
-          <span className="alert-icon">✓</span>
+          <span className="alert-icon"><AppIcon name="check" size={16} /></span>
           <span>{actionSuccess}</span>
         </div>
       )}
       {actionError && !activeModal && (
         <div className="alert alert-error mb-3" role="alert">
-          <span className="alert-icon">⚠️</span>
+          <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
           <span>{actionError}</span>
         </div>
       )}
@@ -359,7 +360,7 @@ export function VerificationPage() {
         </div>
       ) : isError ? (
         <div className="card empty-card" role="alert">
-          <div className="empty-icon">⚠️</div>
+          <div className="empty-icon"><AppIcon name="alert" size={40} color="#d97706" /></div>
           <h2 className="empty-title">Failed to load verification queue</h2>
           <p className="empty-text">There was an error communicating with the server.</p>
           <button type="button" onClick={() => refetch()} className="btn btn-primary">
@@ -368,7 +369,7 @@ export function VerificationPage() {
         </div>
       ) : filteredRequests.length === 0 ? (
         <div className="card empty-card">
-          <div className="empty-icon">✅</div>
+          <div className="empty-icon"><AppIcon name="check-circle" size={40} color="#10b981" /></div>
           <h2 className="empty-title">Queue is clear!</h2>
           <p className="empty-text">
             {activeTab === "AWAITING_VERIFICATION"
@@ -424,7 +425,7 @@ export function VerificationPage() {
                     <td>
                       {req.assigned_technician_name ? (
                         <span className="assigned-tech-name">
-                          👤 {req.assigned_technician_name}
+                          {req.assigned_technician_name}
                         </span>
                       ) : (
                         <span className="text-muted">—</span>
@@ -452,7 +453,7 @@ export function VerificationPage() {
                             onClick={() => openVerifyModal(req)}
                             title="Verify work and permanently close request (T10)"
                           >
-                            ✓ Verify & Close
+                            Verify & Close
                           </button>
                           <button
                             type="button"
@@ -460,7 +461,7 @@ export function VerificationPage() {
                             onClick={() => openReopenModal(req)}
                             title="Reopen request with feedback for technician (T11)"
                           >
-                            ↺ Reopen
+                            Reopen
                           </button>
                         </div>
                       ) : (
@@ -500,7 +501,7 @@ export function VerificationPage() {
             <form onSubmit={handleSubmitAction} className="modal-body">
               {actionError && (
                 <div className="alert alert-error mb-3" role="alert">
-                  <span className="alert-icon">⚠️</span>
+                  <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
                   <span>{actionError}</span>
                 </div>
               )}

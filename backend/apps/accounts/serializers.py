@@ -28,6 +28,13 @@ class UserMeSerializer(serializers.ModelSerializer):
     """Profile serialization for current authenticated user (/api/me)."""
 
     residence_name = serializers.CharField(source="residence.name", read_only=True, default=None)
+    assigned_location_name = serializers.SerializerMethodField()
+
+    def get_assigned_location_name(self, obj: User) -> str | None:
+        if obj.assigned_location:
+            loc = obj.assigned_location
+            return f"Block {loc.block} Fl {loc.floor} ({loc.label})"
+        return None
 
     class Meta:
         model = User
@@ -39,6 +46,8 @@ class UserMeSerializer(serializers.ModelSerializer):
             "role",
             "residence",
             "residence_name",
+            "assigned_location",
+            "assigned_location_name",
             "must_change_password",
             "is_active",
             "created_at",
@@ -51,7 +60,14 @@ class UserAdminItemSerializer(serializers.ModelSerializer):
     """User item detail for Admin User Management table (SCR-11)."""
 
     residence_name = serializers.CharField(source="residence.name", read_only=True, default=None)
+    assigned_location_name = serializers.SerializerMethodField()
     active_work_orders_count = serializers.IntegerField(read_only=True, default=0)
+
+    def get_assigned_location_name(self, obj: User) -> str | None:
+        if obj.assigned_location:
+            loc = obj.assigned_location
+            return f"Block {loc.block} Fl {loc.floor} ({loc.label})"
+        return None
 
     class Meta:
         model = User
@@ -63,6 +79,8 @@ class UserAdminItemSerializer(serializers.ModelSerializer):
             "role",
             "residence",
             "residence_name",
+            "assigned_location",
+            "assigned_location_name",
             "is_active",
             "must_change_password",
             "created_at",
@@ -79,6 +97,7 @@ class UserCreateSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=150, required=True)
     role = serializers.ChoiceField(choices=User._meta.get_field("role").choices, required=True)
     residence_id = serializers.IntegerField(required=False, allow_null=True)
+    assigned_location_id = serializers.IntegerField(required=False, allow_null=True)
     student_number = serializers.CharField(max_length=20, required=False, allow_null=True, allow_blank=True)
 
 
@@ -89,5 +108,6 @@ class UserUpdateSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=User._meta.get_field("role").choices, required=False)
     is_active = serializers.BooleanField(required=False)
     residence_id = serializers.IntegerField(required=False, allow_null=True)
+    assigned_location_id = serializers.IntegerField(required=False, allow_null=True)
     student_number = serializers.CharField(max_length=20, required=False, allow_null=True, allow_blank=True)
 

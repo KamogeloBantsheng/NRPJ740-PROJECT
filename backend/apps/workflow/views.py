@@ -78,8 +78,8 @@ class RequestListCreateView(APIView):
     )
     def post(self, request: Request) -> Response:
         """Submit a new fault report under Table 5.1 T1 rules (SCR-04, FR-05)."""
-        if request.user.role != Role.RESIDENT:
-            raise ForbiddenException("Only residents can submit maintenance requests.")
+        if request.user.role not in (Role.RESIDENT, Role.WARDEN):
+            raise ForbiddenException("Only residents and residence wardens can submit maintenance requests.")
 
         serializer = SubmitRequestSerializer(data=request.data)
         if not serializer.is_valid():

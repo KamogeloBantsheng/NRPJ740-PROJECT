@@ -5,6 +5,7 @@
  */
 
 import { useState, useMemo } from "react";
+import { AppIcon } from "../components/AppIcon";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { auditApi } from "../api/audit";
@@ -108,7 +109,7 @@ export function AuditLogPage() {
             disabled={isFetching}
             title="Refresh audit events"
           >
-            {isFetching ? "Refreshing..." : "↻ Refresh"}
+            {isFetching ? "Refreshing..." : "Refresh"}
           </button>
         </div>
       </div>
@@ -260,12 +261,19 @@ export function AuditLogPage() {
           </div>
         ) : events.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon">📜</div>
-            <p className="empty-title">No audit events match your filters</p>
+            <div className="empty-icon"><AppIcon name="file" size={36} color="var(--color-primary)" /></div>
+            <p className="empty-title">
+              {selectedAction || requestIdFilter || dateFrom || dateTo || searchTerm.trim()
+                ? "No audit events match your filters"
+                : "Audit trail is empty"}
+            </p>
             <p className="empty-subtitle">
-              Try adjusting the date range, action type, or keyword search parameters.
+              {selectedAction || requestIdFilter || dateFrom || dateTo || searchTerm.trim()
+                ? "Try adjusting the date range, action type, or keyword search parameters."
+                : "System security events, maintenance transitions, and user activities will be recorded here in real time."}
             </p>
           </div>
+
         ) : (
           <div className="table-responsive">
             <table className="triage-table audit-table" aria-label="System Audit Trail">
@@ -348,7 +356,7 @@ export function AuditLogPage() {
                           ) : (
                             <span className="text-muted font-xs">initial</span>
                           )}
-                          <span className="transition-arrow">→</span>
+                          <span className="transition-arrow">&rarr;</span>
                           <span className="status-to font-weight-bold">{ev.to_status}</span>
                         </div>
                       ) : (
@@ -398,7 +406,7 @@ export function AuditLogPage() {
               disabled={offset === 0}
               className="btn btn-sm btn-secondary"
             >
-              ← Previous Page
+              Previous Page
             </button>
             <span className="page-indicator font-sm text-muted">
               Page {Math.floor(offset / LIMIT) + 1} of {Math.ceil(totalCount / LIMIT)}
@@ -409,7 +417,7 @@ export function AuditLogPage() {
               disabled={offset + LIMIT >= totalCount}
               className="btn btn-sm btn-secondary"
             >
-              Next Page →
+              Next Page
             </button>
           </div>
         )}
@@ -475,7 +483,7 @@ export function AuditLogPage() {
                 )}
                 {(inspectEvent.from_status || inspectEvent.to_status) && (
                   <div>
-                    <strong>Lifecycle Transition:</strong> {inspectEvent.from_status || "None"} →{" "}
+                    <strong>Lifecycle Transition:</strong> {inspectEvent.from_status || "None"} &rarr;{" "}
                     {inspectEvent.to_status || "None"}
                   </div>
                 )}

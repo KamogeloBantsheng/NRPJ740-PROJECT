@@ -11,6 +11,7 @@ import { workflowApi } from "../api/workflow";
 import { AppError } from "../api/client";
 import { useAuth } from "../context/useAuth";
 import { StatusBadge } from "../components/StatusBadge";
+import { AppIcon } from "../components/AppIcon";
 import type { Priority, RequestStatus, TransitionPayload } from "../types/workflow";
 
 type TriageMode =
@@ -316,19 +317,19 @@ export function RequestDetailPage() {
       {/* Global Alerts */}
       {successMessage && (
         <div className="alert alert-success mb-3" role="alert">
-          <span className="alert-icon">✓</span>
+          <span className="alert-icon"><AppIcon name="check" size={16} /></span>
           <span>{successMessage}</span>
         </div>
       )}
       {actionSuccess && (
         <div className="alert alert-success mb-3" role="alert">
-          <span className="alert-icon">✓</span>
+          <span className="alert-icon"><AppIcon name="check" size={16} /></span>
           <span>{actionSuccess}</span>
         </div>
       )}
       {actionError && (
         <div className="alert alert-error mb-3" role="alert">
-          <span className="alert-icon">⚠️</span>
+          <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
           <span>{actionError}</span>
         </div>
       )}
@@ -409,7 +410,7 @@ export function RequestDetailPage() {
       {req.active_work_order && (
         <div className="card work-order-card">
           <div className="work-order-header">
-            <span className="work-order-icon">🔧</span>
+            <span className="work-order-icon"><AppIcon name="wrench" size={24} color="#be123c" /></span>
             <div>
               <h2 className="work-order-title">Active Work Order Assignment</h2>
               <p className="work-order-subtitle">
@@ -485,7 +486,7 @@ export function RequestDetailPage() {
       {req.status === "NEEDS_CLARIFICATION" && isResidentOwner && (
         <div className="card clarification-card">
           <div className="clarification-header">
-            <span className="clarification-icon">❓</span>
+            <span className="clarification-icon"><AppIcon name="info" size={24} color="#d97706" /></span>
             <div>
               <h2 className="clarification-title">Supervisor Clarification Needed</h2>
               <p className="clarification-subtitle">
@@ -548,7 +549,7 @@ export function RequestDetailPage() {
       {/* Clarification Alert if status is NEEDS_CLARIFICATION and viewer is NOT the owner */}
       {req.status === "NEEDS_CLARIFICATION" && !isResidentOwner && (
         <div className="alert alert-warning mb-3">
-          <span className="alert-icon">ℹ️</span>
+          <span className="alert-icon"><AppIcon name="info" size={16} /></span>
           <div>
             <strong>Awaiting Resident Clarification:</strong>
             <p className="mt-1">
@@ -582,12 +583,12 @@ export function RequestDetailPage() {
               </div>
               {req.status === "APPROVED" && (
                 <span className="status-note">
-                  ✓ Request Approved. Ready for technician dispatch.
+                  Request Approved. Ready for technician dispatch.
                 </span>
               )}
               {["ASSIGNED", "IN_PROGRESS", "REOPENED"].includes(req.status) && req.active_work_order && (
                 <span className="status-note">
-                  🔧 Assigned to {req.active_work_order.technician_name}
+                  Assigned to {req.active_work_order.technician_name}
                 </span>
               )}
             </div>
@@ -601,21 +602,21 @@ export function RequestDetailPage() {
                     className={`btn ${triageMode === "APPROVE" ? "btn-primary" : "btn-outline-primary"}`}
                     onClick={() => setTriageMode(triageMode === "APPROVE" ? "NONE" : "APPROVE")}
                   >
-                    ✓ Approve Fault (T4)
+                    Approve Fault (T4)
                   </button>
                   <button
                     type="button"
                     className={`btn ${triageMode === "CLARIFY" ? "btn-warning" : "btn-outline-warning"}`}
                     onClick={() => setTriageMode(triageMode === "CLARIFY" ? "NONE" : "CLARIFY")}
                   >
-                    ❓ Request Clarification (T2)
+                    Request Clarification (T2)
                   </button>
                   <button
                     type="button"
                     className={`btn ${triageMode === "REJECT" ? "btn-danger" : "btn-outline-danger"}`}
                     onClick={() => setTriageMode(triageMode === "REJECT" ? "NONE" : "REJECT")}
                   >
-                    ✕ Reject Request (T5)
+                    Reject Request (T5)
                   </button>
                 </>
               )}
@@ -639,14 +640,14 @@ export function RequestDetailPage() {
                         : "Assign to active technician"
                     }
                   >
-                    🔧 Assign Technician (T6)
+                    Assign Technician (T6)
                   </button>
                   <button
                     type="button"
                     className={`btn ${triageMode === "REJECT" ? "btn-danger" : "btn-outline-danger"}`}
                     onClick={() => setTriageMode(triageMode === "REJECT" ? "NONE" : "REJECT")}
                   >
-                    ✕ Reject Request (T5)
+                    Reject Request (T5)
                   </button>
                 </>
               )}
@@ -672,7 +673,7 @@ export function RequestDetailPage() {
                       : "Reassign work order to another technician"
                   }
                 >
-                  🔄 Reassign Technician (T7)
+                  Reassign Technician (T7)
                 </button>
               )}
             </div>
@@ -1002,7 +1003,7 @@ export function RequestDetailPage() {
               </p>
             </div>
             <span className="status-note status-awaiting-verify-note">
-              📋 Awaiting Supervisor Verification
+              Awaiting Supervisor Verification
             </span>
           </div>
 
@@ -1036,7 +1037,7 @@ export function RequestDetailPage() {
                 setTriageMode(triageMode === "VERIFY_CLOSE" ? "NONE" : "VERIFY_CLOSE");
               }}
             >
-              ✓ Verify & Close Request (T10)
+              Verify & Close Request (T10)
             </button>
             <button
               type="button"
@@ -1048,7 +1049,7 @@ export function RequestDetailPage() {
                 setTriageMode(triageMode === "REOPEN" ? "NONE" : "REOPEN");
               }}
             >
-              ↺ Reopen with Feedback (T11)
+              Reopen with Feedback (T11)
             </button>
           </div>
 
@@ -1171,7 +1172,7 @@ export function RequestDetailPage() {
             </div>
             {req.status === "IN_PROGRESS" && (
               <span className="status-note status-in-progress-note">
-                ⚙️ Repair Work In Progress
+                Repair Work In Progress
               </span>
             )}
           </div>
@@ -1184,7 +1185,7 @@ export function RequestDetailPage() {
                 onClick={handleStartWork}
                 disabled={transitionMutation.isPending}
               >
-                {transitionMutation.isPending ? "Starting Work..." : "🔧 Start Work (T8)"}
+                {transitionMutation.isPending ? "Starting Work..." : "Start Work (T8)"}
               </button>
             )}
 
@@ -1199,7 +1200,7 @@ export function RequestDetailPage() {
                   setTriageMode(triageMode === "COMPLETE_WORK" ? "NONE" : "COMPLETE_WORK");
                 }}
               >
-                ✓ Complete Work (T9)
+                Complete Work (T9)
               </button>
             )}
           </div>

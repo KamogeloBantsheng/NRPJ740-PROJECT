@@ -203,6 +203,7 @@ class UserAdminListCreateView(APIView):
             full_name=data["full_name"],
             role=data["role"],
             residence_id=data.get("residence_id"),
+            assigned_location_id=data.get("assigned_location_id"),
             student_number=data.get("student_number"),
         )
 
@@ -256,6 +257,7 @@ class UserAdminDetailUpdateView(APIView):
             role=data.get("role"),
             is_active=data.get("is_active"),
             residence_id=data.get("residence_id"),
+            assigned_location_id=data.get("assigned_location_id"),
             student_number=data.get("student_number"),
         )
 

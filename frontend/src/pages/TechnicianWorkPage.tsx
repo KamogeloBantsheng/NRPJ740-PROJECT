@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import { workflowApi } from "../api/workflow";
 import { AppError } from "../api/client";
 import { StatusBadge } from "../components/StatusBadge";
+import { AppIcon } from "../components/AppIcon";
 import type { MaintenanceRequestSummary, RequestStatus, TransitionPayload } from "../types/workflow";
 
 type TechTab = "ACTIVE_QUEUE" | "READY_TO_START" | "IN_PROGRESS" | "ALL";
@@ -191,13 +192,13 @@ export function TechnicianWorkPage() {
       {/* Global Alerts */}
       {actionSuccess && (
         <div className="alert alert-success mb-3" role="alert">
-          <span className="alert-icon">✓</span>
+          <span className="alert-icon"><AppIcon name="check" size={16} /></span>
           <span>{actionSuccess}</span>
         </div>
       )}
       {actionError && !completingRequest && (
         <div className="alert alert-error mb-3" role="alert">
-          <span className="alert-icon">⚠️</span>
+          <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
           <span>{actionError}</span>
         </div>
       )}
@@ -344,7 +345,7 @@ export function TechnicianWorkPage() {
         </div>
       ) : isError ? (
         <div className="card empty-card" role="alert">
-          <div className="empty-icon">⚠️</div>
+          <div className="empty-icon"><AppIcon name="alert" size={40} color="#d97706" /></div>
           <h2 className="empty-title">Failed to load work queue</h2>
           <p className="empty-text">There was an error communicating with the server.</p>
           <button type="button" onClick={() => refetch()} className="btn btn-primary">
@@ -353,7 +354,7 @@ export function TechnicianWorkPage() {
         </div>
       ) : filteredRequests.length === 0 ? (
         <div className="card empty-card">
-          <div className="empty-icon">✅</div>
+          <div className="empty-icon"><AppIcon name="check-circle" size={40} color="#10b981" /></div>
           <h2 className="empty-title">Your work queue is clear!</h2>
           <p className="empty-text">
             {activeTab === "ACTIVE_QUEUE"
@@ -436,7 +437,7 @@ export function TechnicianWorkPage() {
                           onClick={() => openCompleteModal(req)}
                           title="Mark work as completed with mandatory notes"
                         >
-                          ✓ Complete Work (T9)
+                          Complete Work (T9)
                         </button>
                       ) : (
                         <Link to={`/requests/${req.id}`} className="btn btn-secondary btn-sm">
@@ -473,7 +474,7 @@ export function TechnicianWorkPage() {
             <form onSubmit={handleCompleteSubmit} className="modal-body">
               {actionError && (
                 <div className="alert alert-error mb-3" role="alert">
-                  <span className="alert-icon">⚠️</span>
+                  <span className="alert-icon"><AppIcon name="alert" size={16} /></span>
                   <span>{actionError}</span>
                 </div>
               )}

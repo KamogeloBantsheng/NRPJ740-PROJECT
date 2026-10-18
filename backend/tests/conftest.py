@@ -113,6 +113,19 @@ def location_b(db, residence) -> Location:
 
 
 @pytest.fixture
+def common_area_location(db, residence) -> Location:
+    """Active common area in Moroka Hall."""
+    loc, _ = Location.objects.get_or_create(
+        residence=residence,
+        block="A",
+        floor=0,
+        label="Study Room A",
+        defaults={"kind": LocationKind.COMMON_AREA, "is_active": True},
+    )
+    return loc
+
+
+@pytest.fixture
 def other_res_location(db, other_residence) -> Location:
     """Location belonging to a different residence."""
     loc, _ = Location.objects.get_or_create(
@@ -146,7 +159,7 @@ def category_electrical(db) -> FaultCategory:
 
 
 @pytest.fixture
-def resident_user(db, residence) -> User:
+def resident_user(db, residence, location) -> User:
     """Active Resident in Moroka Hall."""
     user, _ = User.objects.get_or_create(
         email="resident.test@spu.ac.za",
@@ -155,17 +168,19 @@ def resident_user(db, residence) -> User:
             "role": Role.RESIDENT,
             "residence": residence,
             "student_number": "202311455",
+            "assigned_location": location,
             "is_active": True,
             "must_change_password": False,
         },
     )
+    user.assigned_location = location
     user.set_password("ValidPassword#123")
     user.save()
     return user
 
 
 @pytest.fixture
-def resident_user_2(db, residence) -> User:
+def resident_user_2(db, residence, location_b) -> User:
     """Secondary Resident in Moroka Hall."""
     user, _ = User.objects.get_or_create(
         email="resident2.test@spu.ac.za",
@@ -174,10 +189,12 @@ def resident_user_2(db, residence) -> User:
             "role": Role.RESIDENT,
             "residence": residence,
             "student_number": "202311999",
+            "assigned_location": location_b,
             "is_active": True,
             "must_change_password": False,
         },
     )
+    user.assigned_location = location_b
     user.set_password("ValidPassword#123")
     user.save()
     return user

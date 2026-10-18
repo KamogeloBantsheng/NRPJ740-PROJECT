@@ -12,6 +12,8 @@ export interface User {
   role: Role;
   residence: number | null;
   residence_name: string | null;
+  assigned_location?: number | null;
+  assigned_location_name?: string | null;
   must_change_password: boolean;
   is_active: boolean;
   created_at: string;

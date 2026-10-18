@@ -24,8 +24,16 @@ export function Navbar() {
     <header className="navbar" role="banner">
       <div className="navbar-container">
         <Link to={homeHref} className="navbar-brand" aria-label="Home">
-          <span className="brand-spu">SPU</span>
-          <span className="brand-title">Moroka Hall Maintenance</span>
+          <div className="brand-mark-box" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              <polyline points="9 22 9 12 15 12 15 22" />
+            </svg>
+          </div>
+          <div className="brand-text-block">
+            <span className="brand-spu">SPU</span>
+            <span className="brand-title">Moroka Hall Maintenance</span>
+          </div>
         </Link>
 
         {isAuthenticated && user && (
@@ -42,9 +50,14 @@ export function Navbar() {
 
             <nav className="navbar-actions" aria-label="Navigation and account actions">
               {user.role === "WARDEN" && (
-                <Link to="/dashboard" className="nav-link">
-                  Dashboard
-                </Link>
+                <>
+                  <Link to="/dashboard" className="nav-link">
+                    Dashboard
+                  </Link>
+                  <Link to="/requests/new" className="nav-link">
+                    Report Fault
+                  </Link>
+                </>
               )}
               {user.role === "SUPERVISOR" && (
                 <>
