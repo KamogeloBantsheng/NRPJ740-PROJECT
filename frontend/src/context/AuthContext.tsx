@@ -30,8 +30,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginMutation = useMutation({
     mutationFn: (payload: LoginPayload) => authApi.login(payload),
-    onSuccess: (newUser) => {
-      queryClient.setQueryData(["auth", "me"], newUser);
+    onSuccess: (result) => {
+      if (!("requires_mfa" in result && result.requires_mfa)) {
+        queryClient.setQueryData(["auth", "me"], result);
+      }
+    },
+  });
+
+  const verifyMfaMutation = useMutation({
+    mutationFn: (payload: { mfa_token: string; code: string }) => authApi.verifyMfa(payload),
+    onSuccess: (verifiedUser) => {
+      queryClient.setQueryData(["auth", "me"], verifiedUser);
     },
   });
 
@@ -53,10 +62,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       isAuthenticated: Boolean(user && user.is_active),
       login: loginMutation.mutateAsync,
+      verifyMfa: verifyMfaMutation.mutateAsync,
       logout: handleLogout,
       getRoleHome,
     }),
-    [user, isLoading, loginMutation.mutateAsync, handleLogout]
+    [user, isLoading, loginMutation.mutateAsync, verifyMfaMutation.mutateAsync, handleLogout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

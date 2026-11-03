@@ -15,12 +15,15 @@ from apps.accounts.permissions import IsAdmin
 from apps.accounts.serializers import (
     ChangePasswordSerializer,
     LoginSerializer,
+    MfaDisableSerializer,
+    MfaEnableSerializer,
+    MfaVerifySerializer,
     UserAdminItemSerializer,
     UserCreateSerializer,
     UserMeSerializer,
     UserUpdateSerializer,
 )
-from apps.accounts.services import AuthService, UserAdminService, UserImportService
+from apps.accounts.services import AuthService, MFAService, UserAdminService, UserImportService
 
 
 class CsrfTokenView(APIView):
@@ -62,13 +65,145 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        user = AuthService.authenticate(
+        user, requires_mfa, mfa_token = AuthService.authenticate(
             email=serializer.validated_data["email"],
             password=serializer.validated_data["password"],
             request=request,
         )
 
+        if requires_mfa:
+            return Response(
+                {
+                    "requires_mfa": True,
+                    "mfa_token": mfa_token,
+                    "email": user.email,
+                },
+                status=status.HTTP_200_OK,
+            )
+
         return Response(UserMeSerializer(user).data, status=status.HTTP_200_OK)
+
+
+class MfaVerifyView(APIView):
+    """Verifies 6-digit TOTP code or backup code to complete authentication."""
+
+    permission_classes = (AllowAny,)
+    authentication_classes = ()
+
+    @extend_schema(
+        operation_id="api_auth_mfa_verify",
+        summary="Verify MFA code during login",
+        description="Validates TOTP 6-digit code or backup code, establishes user session.",
+        request=MfaVerifySerializer,
+        responses={200: UserMeSerializer},
+    )
+    def post(self, request: Request) -> Response:
+        serializer = MfaVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = MFAService.verify_login_mfa(
+            mfa_token=serializer.validated_data["mfa_token"],
+            code=serializer.validated_data["code"],
+            request=request,
+        )
+
+        return Response(UserMeSerializer(user).data, status=status.HTTP_200_OK)
+
+
+class MfaSetupView(APIView):
+    """Generates a new TOTP secret and provisioning URI for MFA enrollment."""
+
+    permission_classes = (IsAuthenticated,)
+
+    @extend_schema(
+        operation_id="api_auth_mfa_setup",
+        summary="Generate TOTP setup secret",
+        description="Generates a temporary TOTP key and provisioning URI to scan in an authenticator app.",
+        responses={
+            200: inline_serializer(
+                name="MfaSetupResponse",
+                fields={
+                    "secret": serializers.CharField(),
+                    "provisioning_uri": serializers.CharField(),
+                    "setup_token": serializers.CharField(),
+                },
+            )
+        },
+    )
+    def post(self, request: Request) -> Response:
+        data = MFAService.generate_setup(request.user)
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class MfaEnableView(APIView):
+    """Confirms initial TOTP code to activate MFA and generates 8 emergency backup codes."""
+
+    permission_classes = (IsAuthenticated,)
+
+    @extend_schema(
+        operation_id="api_auth_mfa_enable",
+        summary="Activate MFA with confirmation code",
+        description="Validates code against setup_token, activates MFA, returns 8 one-time backup codes.",
+        request=MfaEnableSerializer,
+        responses={
+            200: inline_serializer(
+                name="MfaEnableResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "backup_codes": serializers.ListField(child=serializers.CharField()),
+                },
+            )
+        },
+    )
+    def post(self, request: Request) -> Response:
+        serializer = MfaEnableSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        backup_codes = MFAService.enable_mfa(
+            user=request.user,
+            code=serializer.validated_data["code"],
+            setup_token=serializer.validated_data["setup_token"],
+        )
+
+        return Response(
+            {
+                "message": "Two-factor authentication successfully enabled.",
+                "backup_codes": backup_codes,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class MfaDisableView(APIView):
+    """Deactivates MFA after validating user's current password."""
+
+    permission_classes = (IsAuthenticated,)
+
+    @extend_schema(
+        operation_id="api_auth_mfa_disable",
+        summary="Disable two-factor authentication",
+        description="Deactivates TOTP and removes backup codes after password confirmation.",
+        request=MfaDisableSerializer,
+        responses={
+            200: inline_serializer(
+                name="MfaDisableResponse",
+                fields={"message": serializers.CharField()},
+            )
+        },
+    )
+    def post(self, request: Request) -> Response:
+        serializer = MfaDisableSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        MFAService.disable_mfa(
+            user=request.user,
+            password=serializer.validated_data["password"],
+        )
+
+        return Response(
+            {"message": "Two-factor authentication has been disabled."},
+            status=status.HTTP_200_OK,
+        )
 
 
 class LogoutView(APIView):

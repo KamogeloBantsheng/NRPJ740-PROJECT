@@ -107,7 +107,7 @@ export function Navbar() {
                 </>
               )}
               <Link to="/change-password" className="nav-link">
-                Password
+                Security
               </Link>
               <button
                 type="button"

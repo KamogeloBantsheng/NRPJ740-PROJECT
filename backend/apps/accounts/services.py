@@ -1,8 +1,10 @@
 import csv
+import hashlib
 import io
 import re
 import secrets
 
+import pyotp
 from config.exceptions import (
     ConflictException,
     ForbiddenException,
@@ -14,6 +16,7 @@ from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.password_validation import validate_password
+from django.core import signing
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Count, Q
@@ -24,6 +27,18 @@ from apps.accounts.models import Role, User
 from apps.audit.models import AuditAction
 from apps.audit.services import AuditService
 from apps.locations.models import Location, LocationKind, Residence
+
+DANGEROUS_CSV_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def sanitize_csv_cell(value: str | None) -> str:
+    """Neutralize spreadsheet formula injection (CWE-1236) by prefixing dangerous characters with an apostrophe."""
+    if not value:
+        return ""
+    trimmed = value.strip()
+    if trimmed.startswith(DANGEROUS_CSV_PREFIXES):
+        return f"'{trimmed}"
+    return trimmed
 
 
 def get_client_ip(request: HttpRequest) -> str:
@@ -41,25 +56,62 @@ class AuthService:
     THROTTLE_WINDOW_SECONDS = 60
 
     @classmethod
+    def calculate_lockout_duration(cls, failed_count_24h: int) -> int:
+        """Progressive exponential backoff lockout tiers (NFR-02):
+        - Tier 1: 5-9 failed attempts -> 60s lockout
+        - Tier 2: 10-14 failed attempts -> 900s (15m) lockout
+        - Tier 3: 15-19 failed attempts -> 3600s (1h) lockout
+        - Tier 4: 20+ failed attempts -> 86400s (24h) lockout
+        """
+        if failed_count_24h < 5:
+            return 0
+        if failed_count_24h < 10:
+            return 60
+        if failed_count_24h < 15:
+            return 900
+        if failed_count_24h < 20:
+            return 3600
+        return 86400
+
+    @classmethod
     def authenticate(
         cls,
         *,
         email: str,
         password: str,
         request: HttpRequest,
-    ) -> User:
-        """Authenticate user by email and password, enforcing sliding window throttling."""
+    ) -> tuple[User, bool, str | None]:
+        """Authenticate user by email and password, enforcing progressive throttling and 2FA check."""
         normalized_email = email.strip().lower()
         ip_address = get_client_ip(request)
 
-        # 1. Check sliding window throttle (Section 4.4, NFR-02)
-        failed_count = AuditService.count_failed_logins(
+        # 1. Check sliding window throttle and progressive lockout (Section 4.4, NFR-02)
+        failed_count_24h = AuditService.count_failed_logins(
             email=normalized_email,
             ip_address=ip_address,
-            window_seconds=cls.THROTTLE_WINDOW_SECONDS,
+            window_seconds=86400,
         )
-        if failed_count >= cls.MAX_FAILED_ATTEMPTS:
-            raise ThrottledException("Too many failed login attempts. Please try again in a minute.")
+        lockout_duration = cls.calculate_lockout_duration(failed_count_24h)
+        if lockout_duration > 0:
+            latest_time = AuditService.get_latest_failed_login_time(
+                email=normalized_email,
+                ip_address=ip_address,
+            )
+            if latest_time:
+                elapsed = (timezone.now() - latest_time).total_seconds()
+                if elapsed < lockout_duration:
+                    remaining = int(lockout_duration - elapsed)
+                    if lockout_duration <= 60:
+                        msg = "Too many failed login attempts. Please try again in a minute."
+                    elif lockout_duration <= 900:
+                        msg = f"Too many failed login attempts. Account locked for {remaining} seconds."
+                    elif lockout_duration <= 3600:
+                        msg = f"Too many failed login attempts. Account locked for {max(1, remaining // 60)} minutes."
+                    else:
+                        msg = "Too many failed login attempts. Account locked for 24 hours. Contact an administrator."
+                    raise ThrottledException(msg)
+            else:
+                raise ThrottledException("Too many failed login attempts. Please try again in a minute.")
 
         # 2. Look up user
         user = User.objects.filter(email__iexact=normalized_email).first()
@@ -93,14 +145,19 @@ class AuthService:
             )
             raise UnauthenticatedException(generic_error)
 
-        # 4. Successful login: update last_login and cycle session (ADR-03)
+        # 4. Check Multi-Factor Authentication requirement
+        if user.is_mfa_enabled and user.totp_secret:
+            mfa_token = MFAService.create_login_mfa_token(user)
+            return user, True, mfa_token
+
+        # Successful single-factor login: update last_login and cycle session (ADR-03)
         user.last_login = timezone.now()
         user.save(update_fields=["last_login"])
 
         # Cycle session to prevent session fixation and attach authenticated user
         django_login(request, user)
 
-        return user
+        return user, False, None
 
     @classmethod
     def logout(cls, request: HttpRequest) -> None:
@@ -303,11 +360,11 @@ class UserAdminService:
 
         user = User.objects.create(
             email=normalized_email,
-            full_name=trimmed_name,
+            full_name=sanitize_csv_cell(trimmed_name),
             role=role,
             residence=residence,
             assigned_location=assigned_location,
-            student_number=trimmed_student,
+            student_number=sanitize_csv_cell(trimmed_student) if trimmed_student else None,
             must_change_password=True,
             is_active=True,
         )
@@ -458,7 +515,7 @@ class UserAdminService:
 
         # 4. Other fields
         if full_name is not None and full_name.strip():
-            user.full_name = full_name.strip()
+            user.full_name = sanitize_csv_cell(full_name.strip())
 
         user.save()
         return user
@@ -597,8 +654,8 @@ class UserImportService:
                 rows_data.append({
                     "row": idx,
                     "email": email_lower,
-                    "full_name": raw_name,
-                    "student_number": raw_student,
+                    "full_name": sanitize_csv_cell(raw_name),
+                    "student_number": sanitize_csv_cell(raw_student),
                 })
 
         if row_count == 0:
@@ -674,4 +731,136 @@ class UserImportService:
             "created_count": len(created_records),
             "credentials": created_records,
         }
+
+
+class MFAService:
+    """Manages Time-based One-Time Password (TOTP) multi-factor authentication."""
+
+    SALT_MFA_SETUP = "nrpj740_mfa_setup_salt"
+    SALT_MFA_LOGIN = "nrpj740_mfa_login_salt"
+
+    @classmethod
+    def generate_setup(cls, user: User) -> dict:
+        """Generate temporary TOTP secret and provisioning URI for authenticator enrollment."""
+        secret = pyotp.random_base32()
+        totp = pyotp.TOTP(secret)
+        provisioning_uri = totp.provisioning_uri(
+            name=user.email,
+            issuer_name="SPU Moroka Maintenance",
+        )
+        setup_token = signing.dumps({"user_id": user.id, "secret": secret}, salt=cls.SALT_MFA_SETUP)
+        return {
+            "secret": secret,
+            "provisioning_uri": provisioning_uri,
+            "setup_token": setup_token,
+        }
+
+    @classmethod
+    def enable_mfa(cls, *, user: User, code: str, setup_token: str) -> list[str]:
+        """Verify initial code, generate 8 backup codes, and activate 2FA for user."""
+        try:
+            data = signing.loads(setup_token, salt=cls.SALT_MFA_SETUP, max_age=600)
+        except (signing.BadSignature, signing.SignatureExpired):
+            raise ValidationException("Setup session has expired or is invalid. Please restart MFA setup.")
+
+        if data.get("user_id") != user.id:
+            raise ForbiddenException("Invalid setup token for current user.")
+
+        secret = data.get("secret")
+        totp = pyotp.TOTP(secret)
+        cleaned_code = code.strip().replace(" ", "")
+        if not totp.verify(cleaned_code, valid_window=1):
+            raise ValidationException(
+                "Invalid authenticator code. Check your device clock and try again.",
+                fields={"code": ["Invalid 6-digit code."]},
+            )
+
+        # Generate 8 random backup codes (8-char hex)
+        raw_backup_codes = [secrets.token_hex(4).upper() for _ in range(8)]
+        hashed_backup_codes = [
+            hashlib.sha256(bc.encode("utf-8")).hexdigest()
+            for bc in raw_backup_codes
+        ]
+
+        user.totp_secret = secret
+        user.is_mfa_enabled = True
+        user.backup_codes = hashed_backup_codes
+        user.save(update_fields=["totp_secret", "is_mfa_enabled", "backup_codes"])
+
+        AuditService.record(
+            action=AuditAction.MFA_ENABLED,
+            actor=user,
+            target_user=user,
+            details={"email": user.email},
+        )
+
+        return raw_backup_codes
+
+    @classmethod
+    def disable_mfa(cls, *, user: User, password: str) -> None:
+        """Disable 2FA after validating user's current password."""
+        if not user.check_password(password):
+            raise ValidationException("Incorrect password.", fields={"password": ["Incorrect password."]})
+
+        user.is_mfa_enabled = False
+        user.totp_secret = None
+        user.backup_codes = []
+        user.save(update_fields=["is_mfa_enabled", "totp_secret", "backup_codes"])
+
+        AuditService.record(
+            action=AuditAction.MFA_DISABLED,
+            actor=user,
+            target_user=user,
+            details={"email": user.email},
+        )
+
+    @classmethod
+    def create_login_mfa_token(cls, user: User) -> str:
+        """Issue short-lived signed token (valid 5 min) for pending login 2FA verification."""
+        return signing.dumps({"user_id": user.id}, salt=cls.SALT_MFA_LOGIN)
+
+    @classmethod
+    def verify_login_mfa(cls, *, mfa_token: str, code: str, request: HttpRequest) -> User:
+        """Verify 6-digit TOTP code or backup code to complete sign-in."""
+        try:
+            data = signing.loads(mfa_token, salt=cls.SALT_MFA_LOGIN, max_age=300)
+        except (signing.BadSignature, signing.SignatureExpired):
+            raise UnauthenticatedException("MFA session expired. Please sign in again.")
+
+        user = User.objects.filter(id=data.get("user_id")).first()
+        if not user or not user.is_active or not user.is_mfa_enabled or not user.totp_secret:
+            raise UnauthenticatedException("Invalid MFA state. Please sign in again.")
+
+        cleaned_code = code.strip().replace(" ", "").upper()
+        verified = False
+
+        totp = pyotp.TOTP(user.totp_secret)
+        if totp.verify(cleaned_code, valid_window=1):
+            verified = True
+        else:
+            # Check backup code
+            code_hash = hashlib.sha256(cleaned_code.encode("utf-8")).hexdigest()
+            if code_hash in user.backup_codes:
+                verified = True
+                user.backup_codes = [h for h in user.backup_codes if h != code_hash]
+                user.save(update_fields=["backup_codes"])
+
+        if not verified:
+            AuditService.record(
+                action=AuditAction.LOGIN_FAILED,
+                actor=user,
+                target_user=user,
+                details={
+                    "email": user.email,
+                    "ip_address": get_client_ip(request),
+                    "reason": "invalid_mfa_code",
+                },
+            )
+            raise UnauthenticatedException("Invalid authenticator code or backup code.")
+
+        user.last_login = timezone.now()
+        user.save(update_fields=["last_login"])
+        django_login(request, user)
+
+        return user
 

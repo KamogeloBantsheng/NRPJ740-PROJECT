@@ -27,6 +27,8 @@ class AuditAction(models.TextChoices):
     PASSWORD_RESET = "PASSWORD_RESET", "Password Reset"
     PASSWORD_CHANGED = "PASSWORD_CHANGED", "Password Changed"
     LOGIN_FAILED = "LOGIN_FAILED", "Login Failed"
+    MFA_ENABLED = "MFA_ENABLED", "MFA Enabled"
+    MFA_DISABLED = "MFA_DISABLED", "MFA Disabled"
 
 
 class AuditEvent(models.Model):

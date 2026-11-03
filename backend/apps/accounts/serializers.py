@@ -50,10 +50,31 @@ class UserMeSerializer(serializers.ModelSerializer):
             "assigned_location_name",
             "must_change_password",
             "is_active",
+            "is_mfa_enabled",
             "created_at",
             "last_login",
         )
         read_only_fields = fields
+
+
+class MfaVerifySerializer(serializers.Serializer):
+    """Payload to verify 6-digit TOTP code or backup code during sign-in."""
+
+    mfa_token = serializers.CharField(required=True)
+    code = serializers.CharField(required=True, trim_whitespace=True)
+
+
+class MfaEnableSerializer(serializers.Serializer):
+    """Payload to confirm TOTP code and enable 2FA."""
+
+    setup_token = serializers.CharField(required=True)
+    code = serializers.CharField(required=True, trim_whitespace=True)
+
+
+class MfaDisableSerializer(serializers.Serializer):
+    """Payload to disable 2FA after password verification."""
+
+    password = serializers.CharField(required=True, write_only=True, trim_whitespace=False)
 
 
 class UserAdminItemSerializer(serializers.ModelSerializer):
@@ -82,6 +103,7 @@ class UserAdminItemSerializer(serializers.ModelSerializer):
             "assigned_location",
             "assigned_location_name",
             "is_active",
+            "is_mfa_enabled",
             "must_change_password",
             "created_at",
             "last_login",

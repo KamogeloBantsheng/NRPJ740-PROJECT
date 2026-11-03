@@ -114,11 +114,16 @@ SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_HTTPONLY = False  # Frontend needs to read CSRF token to include in header
 CSRF_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SECURE = not DEBUG
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:8080",
     "http://127.0.0.1:8080",
+    "https://localhost:8080",
+    "https://127.0.0.1:8080",
+    "https://localhost",
+    "https://127.0.0.1",
 ]
 
 # Django REST Framework configuration
