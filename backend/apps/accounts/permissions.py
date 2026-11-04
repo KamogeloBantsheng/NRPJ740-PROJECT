@@ -40,6 +40,10 @@ class IsSupervisor(HasRole):
     allowed_roles = (Role.SUPERVISOR,)
 
 
+class IsSupervisorOrAdmin(HasRole):
+    allowed_roles = (Role.SUPERVISOR, Role.ADMIN)
+
+
 class IsTechnician(HasRole):
     allowed_roles = (Role.TECHNICIAN,)
 

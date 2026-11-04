@@ -133,7 +133,7 @@ export interface paths {
         };
         /**
          * Operational dashboard metrics
-         * @description Role-scoped maintenance aggregates for Supervisor, Warden, and Admin (FR-16, SCR-10).
+         * @description Role-scoped maintenance aggregates for Supervisor and Warden (FR-16, SCR-10).
          */
         get: operations["api_dashboard_metrics"];
         put?: never;
@@ -288,6 +288,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/residences/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List active residences
+         * @description List active residences for the triage filter and user administration (FR-03, FR-08).
+         */
+        get: operations["api_residences_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/technicians/": {
         parameters: {
             query?: never;
@@ -300,6 +320,26 @@ export interface paths {
          * @description List active technicians with workload counts for supervisor dispatch (SCR-07, FR-10, FR-11).
          */
         get: operations["api_technicians_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/triage-queue/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the triage queue
+         * @description Submitted requests, oldest first, at most 50 per page, filterable by residence and category (FR-08, SCR-06). Pass status to include other states.
+         */
+        get: operations["api_triage_queue_list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -386,8 +426,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Batch import residents CSV
-         * @description All-or-nothing batch import of resident accounts from CSV file (FR-04, SCR-12).
+         * Batch import users from CSV
+         * @description All-or-nothing batch import of user accounts from a CSV file (FR-04, SCR-12).
          */
         post: operations["api_users_import_csv"];
         delete?: never;
@@ -405,7 +445,7 @@ export interface paths {
         };
         /**
          * List assigned technician work orders
-         * @description List requests currently assigned to the authenticated technician (FR-13, SCR-09, BR-04).
+         * @description Active work assigned to the authenticated technician, by priority and then assignment time (FR-13, SCR-09, BR-04). Pass status=WORK_COMPLETED to see work awaiting verification.
          */
         get: operations["api_work_queue_list"];
         put?: never;
@@ -493,23 +533,24 @@ export interface components {
             csrfToken: string;
         };
         DashboardMetricsResponse: {
-            status_distribution: {
+            scope: {
+                [key: string]: unknown;
+            };
+            summary: {
+                [key: string]: unknown;
+            };
+            status_counts: {
                 [key: string]: number;
             };
-            priority_distribution: {
+            priority_counts: {
                 [key: string]: number;
             };
             category_counts: {
                 [key: string]: unknown;
             }[];
-            aging_brackets: {
+            aging_distribution: {
                 [key: string]: number;
             };
-            /** Format: double */
-            mean_time_to_close_hours: number | null;
-            closed_tickets_sample_size: number;
-            active_work_orders_count: number;
-            scoped_residence: string | null;
         };
         /** @description Serializer for approved maintenance fault categories. */
         FaultCategory: {
@@ -567,6 +608,8 @@ export interface components {
             readonly resident: {
                 [key: string]: unknown;
             } | null;
+            /** @description True for the person who reported the fault, who answers clarification questions (T3). */
+            readonly is_owner: boolean;
             readonly location: {
                 [key: string]: unknown;
             };
@@ -604,12 +647,46 @@ export interface components {
         };
         /** @enum {unknown} */
         NullEnum: null;
+        PagedRequests: {
+            status_totals: {
+                [key: string]: number;
+            };
+            total_count: number;
+            limit: number;
+            offset: number;
+            results: components["schemas"]["MaintenanceRequestList"][];
+        };
+        PagedTriageQueue: {
+            status_totals: {
+                [key: string]: number;
+            };
+            total_count: number;
+            limit: number;
+            offset: number;
+            results: components["schemas"]["MaintenanceRequestList"][];
+        };
+        PagedUsers: {
+            total_count: number;
+            limit: number;
+            offset: number;
+            results: components["schemas"]["UserAdminItem"][];
+        };
+        PagedWorkQueue: {
+            status_totals: {
+                [key: string]: number;
+            };
+            total_count: number;
+            limit: number;
+            offset: number;
+            results: components["schemas"]["MaintenanceRequestList"][];
+        };
         /** @description Payload for updating user profile, role, or active status (FR-03, BR-07, SCR-11). */
         PatchedUserUpdateRequest: {
             full_name?: string;
             role?: components["schemas"]["RoleEnum"];
             is_active?: boolean;
             residence_id?: number | null;
+            assigned_location_id?: number | null;
             student_number?: string | null;
         };
         /**
@@ -632,6 +709,11 @@ export interface components {
             to_status?: string | null;
             note?: string | null;
             details?: unknown;
+        };
+        /** @description Serializer for residence reference data. */
+        Residence: {
+            readonly id: number;
+            name: string;
         };
         /**
          * @description * `RESIDENT` - Resident
@@ -692,6 +774,8 @@ export interface components {
             readonly role: components["schemas"]["RoleEnum"];
             readonly residence: number | null;
             readonly residence_name: string;
+            readonly assigned_location: number | null;
+            readonly assigned_location_name: string | null;
             readonly is_active: boolean;
             readonly must_change_password: boolean;
             /** Format: date-time */
@@ -708,6 +792,7 @@ export interface components {
             full_name: string;
             role: components["schemas"]["RoleEnum"];
             residence_id?: number | null;
+            assigned_location_id?: number | null;
             student_number?: string | null;
         };
         UserCreateResponse: {
@@ -715,12 +800,10 @@ export interface components {
             temporary_password: string;
         };
         UserImportCsvResponse: {
-            total_rows: number;
-            imported_count: number;
-            created_accounts: {
+            created_count: number;
+            credentials: {
                 [key: string]: unknown;
             }[];
-            credentials_file_content: string;
         };
         /** @description Profile serialization for current authenticated user (/api/me). */
         UserMe: {
@@ -732,6 +815,8 @@ export interface components {
             readonly role: components["schemas"]["RoleEnum"];
             readonly residence: number | null;
             readonly residence_name: string;
+            readonly assigned_location: number | null;
+            readonly assigned_location_name: string | null;
             readonly must_change_password: boolean;
             readonly is_active: boolean;
             /** Format: date-time */
@@ -976,7 +1061,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MaintenanceRequestList"][];
+                    "application/json": components["schemas"]["PagedRequests"];
                 };
             };
         };
@@ -1083,6 +1168,25 @@ export interface operations {
             };
         };
     };
+    api_residences_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Residence"][];
+                };
+            };
+        };
+    };
     api_technicians_list: {
         parameters: {
             query?: never;
@@ -1102,6 +1206,25 @@ export interface operations {
             };
         };
     };
+    api_triage_queue_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedTriageQueue"];
+                };
+            };
+        };
+    };
     api_users_list: {
         parameters: {
             query?: never;
@@ -1116,7 +1239,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserAdminItem"][];
+                    "application/json": components["schemas"]["PagedUsers"];
                 };
             };
         };
@@ -1248,7 +1371,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MaintenanceRequestList"][];
+                    "application/json": components["schemas"]["PagedWorkQueue"];
                 };
             };
         };

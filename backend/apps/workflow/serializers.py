@@ -122,6 +122,14 @@ class WorkOrderSerializer(serializers.ModelSerializer):
             "is_active",
         )
 
+    def to_representation(self, instance: WorkOrder) -> dict:
+        data = super().to_representation(instance)
+        # Staff email is personal data: Supervisor and Admin only (Section 5.7)
+        request = self.context.get("request")
+        if not request or request.user.role not in (Role.SUPERVISOR, Role.ADMIN):
+            data.pop("technician_email", None)
+        return data
+
 
 class MaintenanceRequestListSerializer(serializers.ModelSerializer):
     """Compact summary serializer for request queue and list views (SCR-03)."""
@@ -167,8 +175,10 @@ class MaintenanceRequestListSerializer(serializers.ModelSerializer):
         return obj.resident.full_name
 
     def get_assigned_technician_name(self, obj: MaintenanceRequest) -> str | None:
-        wo = obj.work_orders.filter(ended_at__isnull=True).select_related("technician").first()
-        return wo.technician.full_name if wo else None
+        active = getattr(obj, "active_work_orders", None)
+        if active is None:
+            active = obj.work_orders.filter(ended_at__isnull=True).select_related("technician")
+        return next((wo.technician.full_name for wo in active), None)
 
 
 class MaintenanceRequestDetailSerializer(serializers.ModelSerializer):
@@ -176,6 +186,7 @@ class MaintenanceRequestDetailSerializer(serializers.ModelSerializer):
 
     tracking_number = serializers.CharField(read_only=True)
     resident = serializers.SerializerMethodField()
+    is_owner = serializers.SerializerMethodField()
     location = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     active_work_order = serializers.SerializerMethodField()
@@ -195,6 +206,7 @@ class MaintenanceRequestDetailSerializer(serializers.ModelSerializer):
             "updated_at",
             "closed_at",
             "resident",
+            "is_owner",
             "location",
             "category",
             "active_work_order",
@@ -212,6 +224,11 @@ class MaintenanceRequestDetailSerializer(serializers.ModelSerializer):
             "email": obj.resident.email,
             "student_number": obj.resident.student_number,
         }
+
+    def get_is_owner(self, obj: MaintenanceRequest) -> bool:
+        """True for the person who reported the fault, who answers clarification questions (T3)."""
+        request = self.context.get("request")
+        return bool(request and obj.resident_id == request.user.id)
 
     def get_location(self, obj: MaintenanceRequest) -> dict:
         loc = obj.location

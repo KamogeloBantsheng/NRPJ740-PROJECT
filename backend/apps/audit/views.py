@@ -1,4 +1,5 @@
 from config.exceptions import ForbiddenException
+from config.pagination import paginate, parse_int
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
@@ -38,42 +39,18 @@ class AuditLogListView(APIView):
         if request.user.role != Role.ADMIN:
             raise ForbiddenException("Only administrators can access the system audit log.")
 
-        # Parse query filters
-        actor_id_raw = request.query_params.get("actor_id")
-        actor_id = int(actor_id_raw) if actor_id_raw and actor_id_raw.isdigit() else None
-
-        action = request.query_params.get("action")
-        req_id_raw = request.query_params.get("request_id")
-        request_id = int(req_id_raw) if req_id_raw and req_id_raw.isdigit() else None
-
-        date_from = request.query_params.get("date_from")
-        date_to = request.query_params.get("date_to")
-        search = request.query_params.get("search")
-
-        # Pagination
-        try:
-            limit = min(200, max(1, int(request.query_params.get("limit", 50))))
-        except (ValueError, TypeError):
-            limit = 50
-
-        try:
-            offset = max(0, int(request.query_params.get("offset", 0)))
-        except (ValueError, TypeError):
-            offset = 0
-
+        params = request.query_params
         qs = AuditService.search_events(
-            actor_id=actor_id,
-            action=action,
-            request_id=request_id,
-            from_date=date_from,
-            to_date=date_to,
-            search=search,
+            actor_id=parse_int(params.get("actor_id")),
+            action=params.get("action"),
+            request_id=parse_int(params.get("request_id")),
+            from_date=params.get("date_from"),
+            to_date=params.get("date_to"),
+            search=params.get("search"),
         )
 
-        total_count = qs.count()
-        paged_events = qs[offset : offset + limit]
-
-        serializer = AuditEventItemSerializer(paged_events, many=True)
+        page, meta = paginate(request, qs)
+        serializer = AuditEventItemSerializer(page, many=True)
 
         available_actions = [
             {"value": ch[0], "label": ch[1]} for ch in AuditAction.choices
@@ -81,9 +58,7 @@ class AuditLogListView(APIView):
 
         return Response(
             {
-                "total_count": total_count,
-                "limit": limit,
-                "offset": offset,
+                **meta,
                 "events": serializer.data,
                 "available_actions": available_actions,
             },

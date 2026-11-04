@@ -5,10 +5,12 @@ and reopenings) and systematically verifies that all database invariants (INV-1 
 hold true across every operational step.
 """
 
+import random
+
 import pytest
 from apps.accounts.models import User
 from apps.locations.models import FaultCategory, Location
-from apps.workflow.models import Priority, RequestStatus
+from apps.workflow.models import MaintenanceRequest, Priority, RequestStatus
 from rest_framework import status
 from rest_framework.test import APIClient
 from tests.conftest import assert_database_invariants
@@ -196,3 +198,67 @@ class TestDatabaseInvariants:
         )
         assert resp_close.status_code == status.HTTP_200_OK
         assert_database_invariants()
+
+    @pytest.mark.parametrize("seed", range(5))
+    def test_nt03_invariants_hold_after_random_operation_sequences(
+        self,
+        seed: int,
+        resident_client: APIClient,
+        supervisor_client: APIClient,
+        technician_client: APIClient,
+        technician_client_2: APIClient,
+        technician_user: User,
+        technician_user_2: User,
+        location: Location,
+        category: FaultCategory,
+    ):
+        """NT-03: random actions by random roles, legal or not, never break an invariant.
+
+        The seed is fixed so that a failure can be reproduced exactly.
+        """
+        rng = random.Random(seed)
+        request_ids = []
+        for _ in range(4):
+            created = resident_client.post(
+                "/api/requests/",
+                {
+                    "location_id": location.id,
+                    "category_id": category.id,
+                    "description": "Random sequence test: a fault in the residence.",
+                },
+                format="json",
+            )
+            assert created.status_code == status.HTTP_201_CREATED
+            request_ids.append(created.json()["id"])
+
+        clients = [resident_client, supervisor_client, technician_client, technician_client_2]
+        actions = [
+            "REQUEST_CLARIFICATION",
+            "PROVIDE_CLARIFICATION",
+            "APPROVE",
+            "REJECT",
+            "ASSIGN",
+            "REASSIGN",
+            "START_WORK",
+            "COMPLETE_WORK",
+            "VERIFY_CLOSE",
+            "REOPEN",
+        ]
+        audit_ids = assert_database_invariants()
+
+        for _ in range(150):
+            request_id = rng.choice(request_ids)
+            current = MaintenanceRequest.objects.get(id=request_id).status
+            response = rng.choice(clients).post(
+                f"/api/requests/{request_id}/transition/",
+                {
+                    "action": rng.choice(actions),
+                    "expected_status": current,
+                    "note": "A long enough note for every action in this random test.",
+                    "priority": Priority.MEDIUM,
+                    "technician_id": rng.choice([technician_user.id, technician_user_2.id]),
+                },
+                format="json",
+            )
+            assert response.status_code in (200, 403, 404, 409, 422), response.content
+            audit_ids = assert_database_invariants(audit_ids)

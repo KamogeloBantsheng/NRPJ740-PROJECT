@@ -3,6 +3,7 @@
 from typing import Any
 
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.db import IntegrityError
 from django.http import Http404
 from rest_framework import exceptions, status
 from rest_framework.response import Response
@@ -88,6 +89,14 @@ def standard_exception_handler(exc: Exception, context: dict[str, Any]) -> Respo
         if exc.current_status:
             payload["current_status"] = exc.current_status
         return Response(payload, status=exc.status_code)
+
+    # A database constraint caught what the services did not, such as a duplicate insert
+    # that lost a race. The change was refused, so report a conflict (Table 5.8).
+    if isinstance(exc, IntegrityError):
+        return Response(
+            {"code": "CONFLICT", "message": "This change conflicts with another change. Please refresh and try again."},
+            status=status.HTTP_409_CONFLICT,
+        )
 
     if isinstance(exc, (exceptions.NotAuthenticated, exceptions.AuthenticationFailed)):
         return Response(

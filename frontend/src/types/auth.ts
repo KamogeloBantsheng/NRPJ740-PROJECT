@@ -16,42 +16,8 @@ export interface User {
   assigned_location_name?: string | null;
   must_change_password: boolean;
   is_active: boolean;
-  is_mfa_enabled?: boolean;
   created_at: string;
   last_login: string | null;
-}
-
-export interface LoginResponseMfaRequired {
-  requires_mfa: true;
-  mfa_token: string;
-  email: string;
-}
-
-export type LoginResult = (User & { requires_mfa?: false }) | LoginResponseMfaRequired;
-
-export interface MfaVerifyPayload {
-  mfa_token: string;
-  code: string;
-}
-
-export interface MfaSetupResponse {
-  secret: string;
-  provisioning_uri: string;
-  setup_token: string;
-}
-
-export interface MfaEnablePayload {
-  setup_token: string;
-  code: string;
-}
-
-export interface MfaEnableResponse {
-  message: string;
-  backup_codes: string[];
-}
-
-export interface MfaDisablePayload {
-  password: string;
 }
 
 export interface ApiErrorPayload {

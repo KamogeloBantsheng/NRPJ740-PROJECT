@@ -80,32 +80,6 @@ class AuditService:
         return queryset.filter(filter_condition).count()
 
     @staticmethod
-    def get_latest_failed_login_time(
-        email: str | None = None,
-        ip_address: str | None = None,
-    ) -> datetime | None:
-        """Return the timestamp of the most recent failed sign-in attempt."""
-        filter_condition = Q()
-        if email:
-            normalized_email = email.strip().lower()
-            filter_condition |= Q(details__email=normalized_email)
-        if ip_address:
-            filter_condition |= Q(details__ip_address=ip_address.strip())
-
-        if not filter_condition:
-            return None
-
-        return (
-            AuditEvent.objects.filter(
-                action=AuditAction.LOGIN_FAILED,
-            )
-            .filter(filter_condition)
-            .order_by("-occurred_at")
-            .values_list("occurred_at", flat=True)
-            .first()
-        )
-
-    @staticmethod
     def search_events(
         *,
         actor_id: int | None = None,

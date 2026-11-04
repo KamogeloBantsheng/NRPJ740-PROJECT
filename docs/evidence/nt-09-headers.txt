@@ -1,0 +1,4 @@
+Found: Content-Security-Policy
+Found: X-Content-Type-Options
+Found: Referrer-Policy
+Found: X-Frame-Options

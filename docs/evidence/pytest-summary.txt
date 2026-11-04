@@ -1,0 +1,25 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.5, pytest-8.3.5, pluggy-1.7.0
+django: version: 5.2.18, settings: config.settings (from ini)
+rootdir: C:\Users\kamog\OneDrive - Sol Plaatje University\Desktop\School\4th Year\NRPJ740 PROJECT\New Project\Code\backend
+configfile: pytest.ini
+plugins: django-4.14.0
+collected 124 items
+
+backend\tests\test_auth.py .......                                       [  5%]
+backend\tests\test_database.py .....                                     [  9%]
+backend\tests\test_enhanced_security.py .                                [ 10%]
+backend\tests\test_invariants.py ......                                  [ 15%]
+backend\tests\test_matrices.py ................                          [ 28%]
+backend\tests\test_permissions.py ......                                 [ 33%]
+backend\tests\test_regressions.py ...................................... [ 63%]
+......                                                                   [ 68%]
+backend\tests\test_reporting_audit.py .....                              [ 72%]
+backend\tests\test_repository.py ..                                      [ 74%]
+backend\tests\test_room_scoping.py ...........                           [ 83%]
+backend\tests\test_users.py .....                                        [ 87%]
+backend\tests\test_workflow.py ............                              [ 96%]
+backend\tests\test_concurrency.py ..                                     [ 98%]
+backend\tests\test_regressions.py ..                                     [100%]
+
+======================= 124 passed in 99.16s (0:01:39) ========================

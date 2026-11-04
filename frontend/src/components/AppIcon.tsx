@@ -1,5 +1,5 @@
 /**
- * Clean, modern SVG icon component replacing informal emojis with enterprise-grade iconography.
+ * Line icons used across the screens.
  */
 
 import React from "react";

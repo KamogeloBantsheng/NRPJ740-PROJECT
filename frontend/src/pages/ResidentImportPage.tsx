@@ -1,5 +1,5 @@
 /**
- * SCR-12: Bulk Resident CSV Import Screen (FR-04, BR-07, NFR-03, TC-07, TC-08, TC-09, SCR-12).
+ * SCR-12: Bulk user import Screen (FR-04, BR-07, NFR-03, TC-07, TC-08, TC-09, SCR-12).
  * Enables System Administrators to bulk-import student resident accounts with all-or-nothing
  * transaction guarantees, row-level error reporting, and exportable one-time temporary credentials.
  */
@@ -112,10 +112,11 @@ export function ResidentImportPage() {
   // Generate Sample CSV Template Download
   const handleDownloadTemplate = () => {
     const templateContent =
-      "email,full_name,student_number\n" +
-      "s2241001@spu.ac.za,Lerato Khumalo,ST2241001\n" +
-      "s2241002@spu.ac.za,Thabo Mokoena,ST2241002\n" +
-      "s2241003@spu.ac.za,Nomsa Dlamini,ST2241003\n";
+      "email,full_name,role,residence,student_number,room\n" +
+      "s2241001@spu.ac.za,Lerato Khumalo,RESIDENT,Moroka Hall of Residence,ST2241001,A.203\n" +
+      "s2241002@spu.ac.za,Thabo Mokoena,RESIDENT,Moroka Hall of Residence,ST2241002,\n" +
+      "warden2@spu.ac.za,Nomsa Dlamini,WARDEN,Moroka Hall of Residence,,\n" +
+      "tech3@spu.ac.za,Sipho Dube,TECHNICIAN,,,\n";
 
     const blob = new Blob([templateContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -132,9 +133,12 @@ export function ResidentImportPage() {
   const handleDownloadCredentials = () => {
     if (!importResult || importResult.credentials.length === 0) return;
 
-    let csvContent = "email,full_name,student_number,temporary_password\n";
+    const cell = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    let csvContent = "email,full_name,role,student_number,temporary_password\n";
     for (const cred of importResult.credentials) {
-      csvContent += `"${cred.email}","${cred.full_name}","${cred.student_number}","${cred.temporary_password}"\n`;
+      csvContent +=
+        [cred.email, cred.full_name, cred.role, cred.student_number, cred.temporary_password].map(cell).join(",") +
+        "\n";
     }
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -169,11 +173,11 @@ export function ResidentImportPage() {
               Users & Access
             </Link>
             <span className="crumb-sep">/</span>
-            <span className="crumb-page">Import Residents</span>
+            <span className="crumb-page">Import Users</span>
           </div>
-          <h1 className="page-title">Bulk Resident CSV Import</h1>
+          <h1 className="page-title">Bulk user import</h1>
           <p className="page-subtitle">
-            Batch-create resident student accounts with all-or-nothing atomic validation (FR-04, NFR-03).
+            Create many accounts from one file. If any row is wrong, none are created.
           </p>
         </div>
 
@@ -196,12 +200,12 @@ export function ResidentImportPage() {
       <section className="card import-specs-card" aria-label="CSV format specifications">
         <div className="import-specs-header">
           <span className="specs-icon"><AppIcon name="file" size={20} color="var(--color-primary)" /></span>
-          <h2 className="specs-title">CSV File Requirements & All-or-Nothing Rules</h2>
+          <h2 className="specs-title">What the file needs</h2>
         </div>
         <div className="import-specs-grid">
           <div className="spec-item">
             <span className="spec-label">Mandatory Columns</span>
-            <span className="spec-value mono-code">email, full_name, student_number</span>
+            <span className="spec-value mono-code">email, full_name, role, residence, student_number, room</span>
           </div>
           <div className="spec-item">
             <span className="spec-label">Encoding & Size Limits</span>
@@ -215,7 +219,7 @@ export function ResidentImportPage() {
           </div>
           <div className="spec-item">
             <span className="spec-label">Credentials Generated</span>
-            <span className="spec-value">One-time temporary passwords (must_change_password=True)</span>
+            <span className="spec-value">One-time temporary passwords (changed at first sign-in)</span>
           </div>
         </div>
       </section>

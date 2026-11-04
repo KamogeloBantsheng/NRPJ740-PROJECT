@@ -1,9 +1,11 @@
 """Views for user authentication, password management, and current profile (FR-01, FR-02)."""
 
 from config.exceptions import NotFoundException, ValidationException
+from config.pagination import paged_response_schema, paginate, parse_int
 from django.middleware.csrf import get_token
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -15,15 +17,12 @@ from apps.accounts.permissions import IsAdmin
 from apps.accounts.serializers import (
     ChangePasswordSerializer,
     LoginSerializer,
-    MfaDisableSerializer,
-    MfaEnableSerializer,
-    MfaVerifySerializer,
     UserAdminItemSerializer,
     UserCreateSerializer,
     UserMeSerializer,
     UserUpdateSerializer,
 )
-from apps.accounts.services import AuthService, MFAService, UserAdminService, UserImportService
+from apps.accounts.services import AuthService, UserAdminService, UserImportService
 
 
 class CsrfTokenView(APIView):
@@ -62,148 +61,19 @@ class LoginView(APIView):
         responses={200: UserMeSerializer},
     )
     def post(self, request: Request) -> Response:
+        # This view has no authentication class, so DRF would not check the CSRF token by itself
+        SessionAuthentication().enforce_csrf(request)
+
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        user, requires_mfa, mfa_token = AuthService.authenticate(
+        user = AuthService.authenticate(
             email=serializer.validated_data["email"],
             password=serializer.validated_data["password"],
             request=request,
         )
 
-        if requires_mfa:
-            return Response(
-                {
-                    "requires_mfa": True,
-                    "mfa_token": mfa_token,
-                    "email": user.email,
-                },
-                status=status.HTTP_200_OK,
-            )
-
         return Response(UserMeSerializer(user).data, status=status.HTTP_200_OK)
-
-
-class MfaVerifyView(APIView):
-    """Verifies 6-digit TOTP code or backup code to complete authentication."""
-
-    permission_classes = (AllowAny,)
-    authentication_classes = ()
-
-    @extend_schema(
-        operation_id="api_auth_mfa_verify",
-        summary="Verify MFA code during login",
-        description="Validates TOTP 6-digit code or backup code, establishes user session.",
-        request=MfaVerifySerializer,
-        responses={200: UserMeSerializer},
-    )
-    def post(self, request: Request) -> Response:
-        serializer = MfaVerifySerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        user = MFAService.verify_login_mfa(
-            mfa_token=serializer.validated_data["mfa_token"],
-            code=serializer.validated_data["code"],
-            request=request,
-        )
-
-        return Response(UserMeSerializer(user).data, status=status.HTTP_200_OK)
-
-
-class MfaSetupView(APIView):
-    """Generates a new TOTP secret and provisioning URI for MFA enrollment."""
-
-    permission_classes = (IsAuthenticated,)
-
-    @extend_schema(
-        operation_id="api_auth_mfa_setup",
-        summary="Generate TOTP setup secret",
-        description="Generates a temporary TOTP key and provisioning URI to scan in an authenticator app.",
-        responses={
-            200: inline_serializer(
-                name="MfaSetupResponse",
-                fields={
-                    "secret": serializers.CharField(),
-                    "provisioning_uri": serializers.CharField(),
-                    "setup_token": serializers.CharField(),
-                },
-            )
-        },
-    )
-    def post(self, request: Request) -> Response:
-        data = MFAService.generate_setup(request.user)
-        return Response(data, status=status.HTTP_200_OK)
-
-
-class MfaEnableView(APIView):
-    """Confirms initial TOTP code to activate MFA and generates 8 emergency backup codes."""
-
-    permission_classes = (IsAuthenticated,)
-
-    @extend_schema(
-        operation_id="api_auth_mfa_enable",
-        summary="Activate MFA with confirmation code",
-        description="Validates code against setup_token, activates MFA, returns 8 one-time backup codes.",
-        request=MfaEnableSerializer,
-        responses={
-            200: inline_serializer(
-                name="MfaEnableResponse",
-                fields={
-                    "message": serializers.CharField(),
-                    "backup_codes": serializers.ListField(child=serializers.CharField()),
-                },
-            )
-        },
-    )
-    def post(self, request: Request) -> Response:
-        serializer = MfaEnableSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        backup_codes = MFAService.enable_mfa(
-            user=request.user,
-            code=serializer.validated_data["code"],
-            setup_token=serializer.validated_data["setup_token"],
-        )
-
-        return Response(
-            {
-                "message": "Two-factor authentication successfully enabled.",
-                "backup_codes": backup_codes,
-            },
-            status=status.HTTP_200_OK,
-        )
-
-
-class MfaDisableView(APIView):
-    """Deactivates MFA after validating user's current password."""
-
-    permission_classes = (IsAuthenticated,)
-
-    @extend_schema(
-        operation_id="api_auth_mfa_disable",
-        summary="Disable two-factor authentication",
-        description="Deactivates TOTP and removes backup codes after password confirmation.",
-        request=MfaDisableSerializer,
-        responses={
-            200: inline_serializer(
-                name="MfaDisableResponse",
-                fields={"message": serializers.CharField()},
-            )
-        },
-    )
-    def post(self, request: Request) -> Response:
-        serializer = MfaDisableSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        MFAService.disable_mfa(
-            user=request.user,
-            password=serializer.validated_data["password"],
-        )
-
-        return Response(
-            {"message": "Two-factor authentication has been disabled."},
-            status=status.HTTP_200_OK,
-        )
 
 
 class LogoutView(APIView):
@@ -286,7 +156,7 @@ class UserAdminListCreateView(APIView):
         operation_id="api_users_list",
         summary="List users",
         description="List users with optional search, role, status and residence filters (FR-03, SCR-11).",
-        responses={200: UserAdminItemSerializer(many=True)},
+        responses={200: paged_response_schema("PagedUsers", UserAdminItemSerializer)},
     )
     def get(self, request: Request) -> Response:
         search = request.query_params.get("search", "")
@@ -299,17 +169,14 @@ class UserAdminListCreateView(APIView):
             elif is_active_param.lower() in ("false", "0"):
                 is_active = False
 
-        residence_id = request.query_params.get("residence_id")
-        res_id = int(residence_id) if residence_id and residence_id.isdigit() else None
-
         users = UserAdminService.list_users(
             search=search,
             role=role,
             is_active=is_active,
-            residence_id=res_id,
+            residence_id=parse_int(request.query_params.get("residence_id")),
         )
-        serializer = UserAdminItemSerializer(users, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        page, meta = paginate(request, users)
+        return Response({**meta, "results": UserAdminItemSerializer(page, many=True).data}, status=status.HTTP_200_OK)
 
     @extend_schema(
         operation_id="api_users_create",
@@ -436,24 +303,22 @@ class UserAdminResetPasswordView(APIView):
 
 
 class UserAdminCsvImportView(APIView):
-    """All-or-nothing batch import of resident accounts from CSV file (FR-04, SCR-12)."""
+    """All-or-nothing batch import of user accounts from a CSV file (FR-04, SCR-12)."""
 
     permission_classes = (IsAuthenticated, IsAdmin)
     parser_classes = (MultiPartParser, FormParser)
 
     @extend_schema(
         operation_id="api_users_import_csv",
-        summary="Batch import residents CSV",
-        description="All-or-nothing batch import of resident accounts from CSV file (FR-04, SCR-12).",
+        summary="Batch import users from CSV",
+        description="All-or-nothing batch import of user accounts from a CSV file (FR-04, SCR-12).",
         request=None,
         responses={
             201: inline_serializer(
                 name="UserImportCsvResponse",
                 fields={
-                    "total_rows": serializers.IntegerField(),
-                    "imported_count": serializers.IntegerField(),
-                    "created_accounts": serializers.ListField(child=serializers.DictField()),
-                    "credentials_file_content": serializers.CharField(),
+                    "created_count": serializers.IntegerField(),
+                    "credentials": serializers.ListField(child=serializers.DictField()),
                 },
             )
         },
@@ -476,7 +341,7 @@ class UserAdminCsvImportView(APIView):
                 fields={"file": ["Please select or upload a CSV file."]},
             )
 
-        result = UserImportService.import_residents_csv(
+        result = UserImportService.import_users_csv(
             actor=request.user,
             csv_file_bytes=file_bytes,
         )

@@ -9,6 +9,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { workflowApi } from "../api/workflow";
 import { StatusBadge } from "../components/StatusBadge";
 import { AppIcon } from "../components/AppIcon";
+import { Pagination } from "../components/Pagination";
+import { useAuth } from "../context/useAuth";
+import { usePageOffset } from "../hooks/usePageOffset";
 import type { RequestStatus } from "../types/workflow";
 
 const STATUS_FILTERS: { label: string; value: string }[] = [
@@ -24,32 +27,66 @@ const STATUS_FILTERS: { label: string; value: string }[] = [
 export function ResidentRequestsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isWarden = user?.role === "WARDEN";
+  const [offset, setOffset] = usePageOffset(statusFilter);
 
   const {
-    data: requests = [],
+    data,
     isLoading,
     isError,
     error,
     refetch,
   } = useQuery({
-    queryKey: ["requests", "my", statusFilter],
-    queryFn: () => workflowApi.getRequests(statusFilter || undefined),
+    queryKey: ["requests", "my", statusFilter, offset],
+    queryFn: () => workflowApi.getRequests({ status: statusFilter, mine: true, offset }),
   });
+  const requests = data?.results ?? [];
+  const totalCount = data?.total_count ?? 0;
+
+  // FR-06: requests waiting for this person's answer
+  const { data: awaitingAnswer } = useQuery({
+    queryKey: ["requests", "my", "action-required"],
+    queryFn: () => workflowApi.getRequests({ status: "NEEDS_CLARIFICATION", mine: true }),
+  });
+  const actionRequired = awaitingAnswer?.results ?? [];
 
   return (
     <div className="page-container">
       {/* Header Bar */}
       <div className="page-header-row">
         <div>
-          <h1 className="page-title">My Maintenance Requests</h1>
+          <h1 className="page-title">{isWarden ? "My Reports" : "My Maintenance Requests"}</h1>
           <p className="page-subtitle">
-            Track and report faults for Moroka Hall of Residence (FR-06, SCR-03).
+            {isWarden
+              ? "Faults you reported for residents who could not reach their accounts."
+              : "Track and report faults for Moroka Hall of Residence."}
           </p>
         </div>
         <Link to="/requests/new" className="btn btn-primary">
           <span className="btn-icon">+</span> Report a Fault
         </Link>
       </div>
+
+      {/* Action Required (FR-06) */}
+      {actionRequired.length > 0 && (
+        <section className="card action-required-card" aria-labelledby="action-required-title">
+          <h2 id="action-required-title" className="action-required-title">
+            Action required ({awaitingAnswer?.total_count})
+          </h2>
+          <p className="action-required-hint">The Supervisor needs more information before these can continue.</p>
+          <ul className="action-required-list">
+            {actionRequired.map((req) => (
+              <li key={req.id}>
+                <Link to={`/requests/${req.id}`} className="action-required-link">
+                  <span className="tracking-badge">{req.tracking_number}</span>
+                  <span>{req.description_snippet}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Filters and Search Bar */}
       <div className="card filter-card">
@@ -73,7 +110,7 @@ export function ResidentRequestsPage() {
           </div>
 
           <div className="filter-stats">
-            Showing <strong>{requests.length}</strong> {requests.length === 1 ? "request" : "requests"}
+            Showing <strong>{requests.length}</strong> {totalCount === 1 ? "request" : "requests"}
           </div>
         </div>
       </div>
@@ -150,6 +187,8 @@ export function ResidentRequestsPage() {
           ))}
         </div>
       )}
+
+      <Pagination total={totalCount} limit={data?.limit ?? 50} offset={offset} onChange={setOffset} />
     </div>
   );
 }

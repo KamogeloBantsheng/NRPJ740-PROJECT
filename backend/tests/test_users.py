@@ -92,10 +92,10 @@ class TestUserAdministration:
     ):
         """TC-07: Valid CSV of N rows creates N accounts, returns one-time credentials (FR-04, AC-04.1)."""
         csv_content = (
-            "full_name,email,student_number,room_number\n"
-            "Alice Mokoena,alice.m@spu.ac.za,202300001,101\n"
-            "Bob Dlamini,bob.d@spu.ac.za,202300002,102\n"
-            "Charlie Botha,charlie.b@spu.ac.za,202300003,103\n"
+            "full_name,email,student_number\n"
+            "Alice Mokoena,alice.m@spu.ac.za,202300001\n"
+            "Bob Dlamini,bob.d@spu.ac.za,202300002\n"
+            "Charlie Botha,charlie.b@spu.ac.za,202300003\n"
         )
         csv_file = io.BytesIO(csv_content.encode("utf-8"))
         csv_file.name = "residents.csv"

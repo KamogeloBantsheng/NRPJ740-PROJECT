@@ -11,6 +11,8 @@ import { workflowApi } from "../api/workflow";
 import { AppError } from "../api/client";
 import { StatusBadge } from "../components/StatusBadge";
 import { AppIcon } from "../components/AppIcon";
+import { Pagination } from "../components/Pagination";
+import { usePageOffset } from "../hooks/usePageOffset";
 import type { MaintenanceRequestSummary, RequestStatus, TransitionPayload } from "../types/workflow";
 
 type TechTab = "ACTIVE_QUEUE" | "READY_TO_START" | "IN_PROGRESS" | "ALL";
@@ -40,19 +42,29 @@ export function TechnicianWorkPage() {
         return "IN_PROGRESS";
       case "ALL":
       default:
-        return undefined;
+        return "ASSIGNED,IN_PROGRESS,REOPENED,WORK_COMPLETED";
     }
   }, [activeTab]);
 
+  const filters = {
+    status: statusParam,
+    category_id: selectedCategory,
+    location_id: selectedLocation,
+    search: searchQuery.trim(),
+  };
+  const [offset, setOffset] = usePageOffset(JSON.stringify(filters));
+
   const {
-    data: requests = [],
+    data,
     isLoading,
     isError,
     refetch,
   } = useQuery({
-    queryKey: ["tech-work-queue", statusParam],
-    queryFn: () => workflowApi.getWorkQueue(statusParam),
+    queryKey: ["tech-work-queue", filters, offset],
+    queryFn: () => workflowApi.getWorkQueue({ ...filters, offset }),
   });
+  const requests = data?.results ?? [];
+  const totalCount = data?.total_count ?? 0;
 
   const { data: categories = [] } = useQuery({
     queryKey: ["categories"],
@@ -127,7 +139,7 @@ export function TechnicianWorkPage() {
     setActionError(null);
     const trimmed = completionNotes.trim();
     if (trimmed.length < 20) {
-      setActionError("Work completion notes must be at least 20 characters long (BR-02).");
+      setActionError("Work completion notes must be at least 20 characters long.");
       return;
     }
 
@@ -141,50 +153,19 @@ export function TechnicianWorkPage() {
     });
   };
 
-  // Filter requests
-  const filteredRequests = useMemo(() => {
-    return requests.filter((req) => {
-      if (selectedCategory > 0) {
-        const cat = categories.find((c) => c.id === selectedCategory);
-        if (cat && req.category_name !== cat.name) return false;
-      }
-      if (selectedLocation > 0) {
-        const loc = locations.find((l) => l.id === selectedLocation);
-        if (loc && req.location_label !== loc.label) return false;
-      }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const tracking = req.tracking_number.toLowerCase();
-        const desc = req.description_snippet.toLowerCase();
-        const loc = req.location_label.toLowerCase();
-        return tracking.includes(q) || desc.includes(q) || loc.includes(q);
-      }
-      return true;
-    });
-  }, [requests, selectedCategory, selectedLocation, searchQuery, categories, locations]);
-
   // Counts
-  const readyToStartCount = useMemo(
-    () => requests.filter((r) => ["ASSIGNED", "REOPENED"].includes(r.status)).length,
-    [requests]
-  );
-  const inProgressCount = useMemo(
-    () => requests.filter((r) => r.status === "IN_PROGRESS").length,
-    [requests]
-  );
-  const completedCount = useMemo(
-    () => requests.filter((r) => r.status === "WORK_COMPLETED").length,
-    [requests]
-  );
+  const readyToStartCount = (data?.status_totals.ASSIGNED ?? 0) + (data?.status_totals.REOPENED ?? 0);
+  const inProgressCount = data?.status_totals.IN_PROGRESS ?? 0;
+  const completedCount = data?.status_totals.WORK_COMPLETED ?? 0;
 
   return (
     <div className="page-container technician-page-container">
       {/* Page Header */}
       <div className="page-header">
         <div>
-          <h1 className="page-title">Technician Work Queue & Tasks</h1>
+          <h1 className="page-title">My work</h1>
           <p className="page-subtitle">
-            Moroka Hall Residence &bull; Review assigned repairs by priority, start work, and record mandatory completion notes (FR-13, FR-14, FR-15, SCR-09)
+            Most urgent first. Start a job when you arrive, and record what you did when you finish.
           </p>
         </div>
       </div>
@@ -208,7 +189,7 @@ export function TechnicianWorkPage() {
         <div className="card metric-card">
           <div className="metric-label">Tasks Ready to Start</div>
           <div className="metric-value metric-warning">{readyToStartCount}</div>
-          <div className="metric-hint">Assigned or reopened repairs awaiting work (T8)</div>
+          <div className="metric-hint">Assigned or reopened repairs awaiting work</div>
         </div>
         <div className="card metric-card">
           <div className="metric-label">Repairs In Progress</div>
@@ -218,7 +199,7 @@ export function TechnicianWorkPage() {
         <div className="card metric-card">
           <div className="metric-label">Completed by You</div>
           <div className="metric-value metric-success">{completedCount}</div>
-          <div className="metric-hint">Awaiting supervisor verification & close (T10)</div>
+          <div className="metric-hint">Awaiting supervisor verification & close</div>
         </div>
       </div>
 
@@ -352,7 +333,7 @@ export function TechnicianWorkPage() {
             Retry Loading
           </button>
         </div>
-      ) : filteredRequests.length === 0 ? (
+      ) : requests.length === 0 ? (
         <div className="card empty-card">
           <div className="empty-icon"><AppIcon name="check-circle" size={40} color="#10b981" /></div>
           <h2 className="empty-title">Your work queue is clear!</h2>
@@ -379,7 +360,7 @@ export function TechnicianWorkPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredRequests.map((req) => (
+                {requests.map((req) => (
                   <tr key={req.id} className="triage-table-row">
                     <td>
                       {req.priority ? (
@@ -428,7 +409,7 @@ export function TechnicianWorkPage() {
                           disabled={transitionMutation.isPending}
                           title="Start working on this maintenance request"
                         >
-                          Start Work (T8) &rarr;
+                          Start Work &rarr;
                         </button>
                       ) : req.status === "IN_PROGRESS" ? (
                         <button
@@ -437,7 +418,7 @@ export function TechnicianWorkPage() {
                           onClick={() => openCompleteModal(req)}
                           title="Mark work as completed with mandatory notes"
                         >
-                          Complete Work (T9)
+                          Complete Work
                         </button>
                       ) : (
                         <Link to={`/requests/${req.id}`} className="btn btn-secondary btn-sm">
@@ -450,6 +431,7 @@ export function TechnicianWorkPage() {
               </tbody>
             </table>
           </div>
+          <Pagination total={totalCount} limit={data?.limit ?? 50} offset={offset} onChange={setOffset} />
         </div>
       )}
 
@@ -459,7 +441,7 @@ export function TechnicianWorkPage() {
           <div className="modal-card">
             <div className="modal-header">
               <h2 className="modal-title">
-                Complete Work: {completingRequest.tracking_number} (T9)
+                Complete Work: {completingRequest.tracking_number}
               </h2>
               <button
                 type="button"
@@ -520,7 +502,7 @@ export function TechnicianWorkPage() {
                   required
                 />
                 <span className="field-hint">
-                  Detailed repair notes are required for supervisor verification review (BR-02).
+                  Detailed repair notes are required for supervisor verification review.
                 </span>
               </div>
 
@@ -540,7 +522,7 @@ export function TechnicianWorkPage() {
                 >
                   {transitionMutation.isPending
                     ? "Submitting Completion..."
-                    : "Confirm Work Completed (T9)"}
+                    : "Confirm Work Completed"}
                 </button>
               </div>
             </form>

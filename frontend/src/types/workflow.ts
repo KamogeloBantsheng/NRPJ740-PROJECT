@@ -25,6 +25,11 @@ export interface LocationItem {
   display_name: string;
 }
 
+export interface ResidenceItem {
+  id: number;
+  name: string;
+}
+
 export interface FaultCategoryItem {
   id: number;
   name: string;
@@ -43,7 +48,7 @@ export interface WorkOrderSummary {
   request_id: number;
   technician_id: number;
   technician_name: string;
-  technician_email: string;
+  technician_email?: string;
   assigned_by_id: number;
   assigned_by_name: string;
   assigned_at: string;
@@ -69,6 +74,17 @@ export interface MaintenanceRequestSummary {
   closed_at: string | null;
 }
 
+export interface PagedResult<T> {
+  total_count: number;
+  limit: number;
+  offset: number;
+  results: T[];
+}
+
+export interface PagedRequests extends PagedResult<MaintenanceRequestSummary> {
+  status_totals: Partial<Record<RequestStatus, number>>;
+}
+
 export interface TransitionPayload {
   action: string;
   expected_status: RequestStatus;
@@ -90,6 +106,7 @@ export interface TimelineEvent {
 }
 
 export interface MaintenanceRequestDetail {
+  is_owner: boolean;
   id: number;
   tracking_number: string;
   status: RequestStatus;

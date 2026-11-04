@@ -133,8 +133,8 @@ paths:
   /api/dashboard/:
     get:
       operationId: api_dashboard_metrics
-      description: Role-scoped maintenance aggregates for Supervisor, Warden, and
-        Admin (FR-16, SCR-10).
+      description: Role-scoped maintenance aggregates for Supervisor and Warden (FR-16,
+        SCR-10).
       summary: Operational dashboard metrics
       tags:
       - api
@@ -221,9 +221,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/MaintenanceRequestList'
+                $ref: '#/components/schemas/PagedRequests'
           description: ''
     post:
       operationId: api_requests_create
@@ -341,6 +339,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/MaintenanceRequestDetail'
           description: ''
+  /api/residences/:
+    get:
+      operationId: api_residences_list
+      description: List active residences for the triage filter and user administration
+        (FR-03, FR-08).
+      summary: List active residences
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Residence'
+          description: ''
   /api/technicians/:
     get:
       operationId: api_technicians_list
@@ -360,6 +377,23 @@ paths:
                 items:
                   $ref: '#/components/schemas/TechnicianItem'
           description: ''
+  /api/triage-queue/:
+    get:
+      operationId: api_triage_queue_list
+      description: Submitted requests, oldest first, at most 50 per page, filterable
+        by residence and category (FR-08, SCR-06). Pass status to include other states.
+      summary: List the triage queue
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedTriageQueue'
+          description: ''
   /api/users/:
     get:
       operationId: api_users_list
@@ -375,9 +409,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/UserAdminItem'
+                $ref: '#/components/schemas/PagedUsers'
           description: ''
     post:
       operationId: api_users_create
@@ -488,9 +520,9 @@ paths:
   /api/users/import-csv/:
     post:
       operationId: api_users_import_csv
-      description: All-or-nothing batch import of resident accounts from CSV file
-        (FR-04, SCR-12).
-      summary: Batch import residents CSV
+      description: All-or-nothing batch import of user accounts from a CSV file (FR-04,
+        SCR-12).
+      summary: Batch import users from CSV
       tags:
       - api
       security:
@@ -505,8 +537,9 @@ paths:
   /api/work-queue/:
     get:
       operationId: api_work_queue_list
-      description: List requests currently assigned to the authenticated technician
-        (FR-13, SCR-09, BR-04).
+      description: Active work assigned to the authenticated technician, by priority
+        and then assignment time (FR-13, SCR-09, BR-04). Pass status=WORK_COMPLETED
+        to see work awaiting verification.
       summary: List assigned technician work orders
       tags:
       - api
@@ -517,9 +550,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/MaintenanceRequestList'
+                $ref: '#/components/schemas/PagedWorkQueue'
           description: ''
 components:
   schemas:
@@ -698,11 +729,17 @@ components:
     DashboardMetricsResponse:
       type: object
       properties:
-        status_distribution:
+        scope:
+          type: object
+          additionalProperties: {}
+        summary:
+          type: object
+          additionalProperties: {}
+        status_counts:
           type: object
           additionalProperties:
             type: integer
-        priority_distribution:
+        priority_counts:
           type: object
           additionalProperties:
             type: integer
@@ -711,30 +748,17 @@ components:
           items:
             type: object
             additionalProperties: {}
-        aging_brackets:
+        aging_distribution:
           type: object
           additionalProperties:
             type: integer
-        mean_time_to_close_hours:
-          type: number
-          format: double
-          nullable: true
-        closed_tickets_sample_size:
-          type: integer
-        active_work_orders_count:
-          type: integer
-        scoped_residence:
-          type: string
-          nullable: true
       required:
-      - active_work_orders_count
-      - aging_brackets
+      - aging_distribution
       - category_counts
-      - closed_tickets_sample_size
-      - mean_time_to_close_hours
-      - priority_distribution
-      - scoped_residence
-      - status_distribution
+      - priority_counts
+      - scope
+      - status_counts
+      - summary
     FaultCategory:
       type: object
       description: Serializer for approved maintenance fault categories.
@@ -873,6 +897,11 @@ components:
           additionalProperties: {}
           nullable: true
           readOnly: true
+        is_owner:
+          type: boolean
+          description: True for the person who reported the fault, who answers clarification
+            questions (T3).
+          readOnly: true
         location:
           type: object
           additionalProperties: {}
@@ -905,6 +934,7 @@ components:
       - created_at
       - description
       - id
+      - is_owner
       - location
       - resident
       - timeline
@@ -978,6 +1008,93 @@ components:
     NullEnum:
       enum:
       - null
+    PagedRequests:
+      type: object
+      properties:
+        status_totals:
+          type: object
+          additionalProperties:
+            type: integer
+        total_count:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaintenanceRequestList'
+      required:
+      - limit
+      - offset
+      - results
+      - status_totals
+      - total_count
+    PagedTriageQueue:
+      type: object
+      properties:
+        status_totals:
+          type: object
+          additionalProperties:
+            type: integer
+        total_count:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaintenanceRequestList'
+      required:
+      - limit
+      - offset
+      - results
+      - status_totals
+      - total_count
+    PagedUsers:
+      type: object
+      properties:
+        total_count:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserAdminItem'
+      required:
+      - limit
+      - offset
+      - results
+      - total_count
+    PagedWorkQueue:
+      type: object
+      properties:
+        status_totals:
+          type: object
+          additionalProperties:
+            type: integer
+        total_count:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaintenanceRequestList'
+      required:
+      - limit
+      - offset
+      - results
+      - status_totals
+      - total_count
     PatchedUserUpdateRequest:
       type: object
       description: Payload for updating user profile, role, or active status (FR-03,
@@ -992,6 +1109,9 @@ components:
         is_active:
           type: boolean
         residence_id:
+          type: integer
+          nullable: true
+        assigned_location_id:
           type: integer
           nullable: true
         student_number:
@@ -1046,6 +1166,19 @@ components:
       - actor_name
       - actor_role
       - id
+    Residence:
+      type: object
+      description: Serializer for residence reference data.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 100
+      required:
+      - id
+      - name
     RoleEnum:
       enum:
       - RESIDENT
@@ -1180,6 +1313,14 @@ components:
         residence_name:
           type: string
           readOnly: true
+        assigned_location:
+          type: integer
+          readOnly: true
+          nullable: true
+        assigned_location_name:
+          type: string
+          nullable: true
+          readOnly: true
         is_active:
           type: boolean
           readOnly: true
@@ -1201,6 +1342,8 @@ components:
           default: 0
       required:
       - active_work_orders_count
+      - assigned_location
+      - assigned_location_name
       - created_at
       - email
       - full_name
@@ -1229,6 +1372,9 @@ components:
         residence_id:
           type: integer
           nullable: true
+        assigned_location_id:
+          type: integer
+          nullable: true
         student_number:
           type: string
           nullable: true
@@ -1250,22 +1396,16 @@ components:
     UserImportCsvResponse:
       type: object
       properties:
-        total_rows:
+        created_count:
           type: integer
-        imported_count:
-          type: integer
-        created_accounts:
+        credentials:
           type: array
           items:
             type: object
             additionalProperties: {}
-        credentials_file_content:
-          type: string
       required:
-      - created_accounts
-      - credentials_file_content
-      - imported_count
-      - total_rows
+      - created_count
+      - credentials
     UserMe:
       type: object
       description: Profile serialization for current authenticated user (/api/me).
@@ -1295,6 +1435,14 @@ components:
         residence_name:
           type: string
           readOnly: true
+        assigned_location:
+          type: integer
+          readOnly: true
+          nullable: true
+        assigned_location_name:
+          type: string
+          nullable: true
+          readOnly: true
         must_change_password:
           type: boolean
           readOnly: true
@@ -1311,6 +1459,8 @@ components:
           readOnly: true
           nullable: true
       required:
+      - assigned_location
+      - assigned_location_name
       - created_at
       - email
       - full_name

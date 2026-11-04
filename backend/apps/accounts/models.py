@@ -73,9 +73,6 @@ class User(AbstractBaseUser):
     password = models.CharField(max_length=128)
     must_change_password = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
-    is_mfa_enabled = models.BooleanField(default=False)
-    totp_secret = models.CharField(max_length=64, null=True, blank=True)
-    backup_codes = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_login = models.DateTimeField(null=True, blank=True)
 

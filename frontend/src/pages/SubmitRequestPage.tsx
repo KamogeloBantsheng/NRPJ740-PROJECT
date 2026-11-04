@@ -90,8 +90,8 @@ export function SubmitRequestPage() {
     submitMutation.mutate(data);
   };
 
-  const backLink = user?.role === "WARDEN" ? "/dashboard" : "/requests";
-  const backLabel = user?.role === "WARDEN" ? "Back to Dashboard" : "Back to My Requests";
+  const backLink = "/requests";
+  const backLabel = user?.role === "WARDEN" ? "Back to My Reports" : "Back to My Requests";
 
   return (
     <div className="page-container form-page-container">
@@ -106,17 +106,22 @@ export function SubmitRequestPage() {
         <div className="form-header">
           <h1 className="form-title">Report a Maintenance Fault</h1>
           <p className="form-subtitle">
-            Moroka Hall of Residence &bull; Fast-track maintenance dispatch (FR-05, SCR-04)
+            Moroka Hall of Residence &bull; Tell us what is broken and where
           </p>
+        </div>
+
+        {/* Always shown: this system is not for emergencies (Section 3.1, AC-05.4) */}
+        <div className="alert alert-emergency" role="note">
+          <strong>Emergencies:</strong> anything dangerous must be reported to campus security directly. Do not use this form.
         </div>
 
         {/* Room Assignment Scope Callout */}
         {user?.role === "RESIDENT" && (
-          <div className="alert alert-info" style={{ marginBottom: "1.25rem", padding: "0.85rem 1rem", borderRadius: "8px", backgroundColor: "#fff1f2", border: "1px solid #fecdd3", color: "#9f1239" }}>
+          <div className="alert alert-info">
             {user.assigned_location_name ? (
               <div>
                 <strong>Your Assigned Room:</strong> {user.assigned_location_name}.
-                <div style={{ fontSize: "0.875rem", marginTop: "0.25rem", color: "#881337" }}>
+                <div className="font-sm mt-1">
                   Per university policy, students may report faults for their assigned room and shared communal facilities only.
                 </div>
               </div>
@@ -129,7 +134,7 @@ export function SubmitRequestPage() {
         )}
 
         {user?.role === "WARDEN" && (
-          <div className="alert alert-info" style={{ marginBottom: "1.25rem", padding: "0.85rem 1rem", borderRadius: "8px", backgroundColor: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" }}>
+          <div className="alert alert-info">
             <strong>Residence Warden Mode:</strong> You have full residence oversight and may choose from all student rooms and common areas in {user.residence_name || "Moroka Hall"}.
           </div>
         )}

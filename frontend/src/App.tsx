@@ -1,8 +1,11 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AppError } from "./api/client";
 import { AuthProvider } from "./context/AuthContext";
+import { handleApiError } from "./context/sessionExpiry";
 import { useAuth } from "./context/useAuth";
 import { Navbar } from "./components/Navbar";
+import { NetworkBanner } from "./components/NetworkBanner";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
@@ -23,7 +26,19 @@ import {
   UnauthorizedPage,
 } from "./pages/ErrorPages";
 
-const queryClient = new QueryClient();
+const queryClient: QueryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: (error) => handleApiError(error, queryClient) }),
+  mutationCache: new MutationCache({ onError: (error) => handleApiError(error, queryClient) }),
+  defaultOptions: {
+    queries: {
+      // A 4xx answer will not change on retry. Only network and server failures are worth another try.
+      retry: (failureCount, error) => {
+        const isClientError = error instanceof AppError && error.statusCode >= 400 && error.statusCode < 500;
+        return !isClientError && failureCount < 2;
+      },
+    },
+  },
+});
 
 function RootRedirect() {
   const { user, isAuthenticated, isLoading, getRoleHome } = useAuth();
@@ -55,6 +70,7 @@ export function App() {
         <AuthProvider>
           <div className="app-shell">
             <Navbar />
+            <NetworkBanner />
             <div className="content-container">
               <Routes>
                 <Route path="/" element={<RootRedirect />} />
@@ -74,7 +90,7 @@ export function App() {
                 <Route
                   path="/requests"
                   element={
-                    <ProtectedRoute allowedRoles={["RESIDENT"]}>
+                    <ProtectedRoute allowedRoles={["RESIDENT", "WARDEN"]}>
                       <ResidentRequestsPage />
                     </ProtectedRoute>
                   }
@@ -90,7 +106,7 @@ export function App() {
                 <Route
                   path="/requests/:id"
                   element={
-                    <ProtectedRoute allowedRoles={["RESIDENT", "SUPERVISOR", "WARDEN", "ADMIN"]}>
+                    <ProtectedRoute allowedRoles={["RESIDENT", "SUPERVISOR", "TECHNICIAN", "WARDEN", "ADMIN"]}>
                       <RequestDetailPage />
                     </ProtectedRoute>
                   }
@@ -133,7 +149,7 @@ export function App() {
                 <Route
                   path="/dashboard"
                   element={
-                    <ProtectedRoute allowedRoles={["WARDEN", "SUPERVISOR", "ADMIN"]}>
+                    <ProtectedRoute allowedRoles={["WARDEN", "SUPERVISOR"]}>
                       <DashboardPage />
                     </ProtectedRoute>
                   }

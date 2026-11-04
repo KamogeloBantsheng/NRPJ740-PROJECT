@@ -69,4 +69,5 @@ Desktop.ini
 # Testing & Scratch
 .pytest_cache/
 scratch/
-
+frontend/test-results/
+frontend/playwright-report/

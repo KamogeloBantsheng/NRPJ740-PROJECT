@@ -1,9 +1,9 @@
 """PermissionPolicy defining role-based query scopes and object access (BR-04, BR-05, Section 5.4)."""
 
-from django.db.models import QuerySet
+from django.db.models import Prefetch, QuerySet
 
 from apps.accounts.models import Role, User
-from apps.workflow.models import MaintenanceRequest
+from apps.workflow.models import MaintenanceRequest, WorkOrder
 
 
 class PermissionPolicy:
@@ -12,9 +12,15 @@ class PermissionPolicy:
     @staticmethod
     def scope_requests(user: User) -> QuerySet[MaintenanceRequest]:
         """Return requests visible to the given user based on role and residence scope (BR-05)."""
-        base_qs = (
-            MaintenanceRequest.objects.select_related("resident", "location", "category", "location__residence")
-            .all()
+        # The active work order is fetched in one extra query, not one per row (NFR-06)
+        base_qs = MaintenanceRequest.objects.select_related(
+            "resident", "location", "category", "location__residence"
+        ).prefetch_related(
+            Prefetch(
+                "work_orders",
+                queryset=WorkOrder.objects.filter(ended_at__isnull=True).select_related("technician"),
+                to_attr="active_work_orders",
+            )
         )
 
         if user.role == Role.RESIDENT:

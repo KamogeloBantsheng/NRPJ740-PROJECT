@@ -25,7 +25,7 @@ export function DashboardPage() {
     queryFn: () => reportingApi.getDashboardMetrics(selectedResidenceId),
   });
 
-  const isSupervisorOrAdmin = user?.role === "SUPERVISOR" || user?.role === "ADMIN";
+  const isSupervisor = user?.role === "SUPERVISOR";
 
   return (
     <main className="dashboard-page-container triage-page-container" id="main-content">
@@ -37,15 +37,15 @@ export function DashboardPage() {
             <span className="crumb-sep">/</span>
             <span className="crumb-page">Operational Dashboard</span>
           </div>
-          <h1 className="page-title">Residence Oversight Dashboard</h1>
+          <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">
-            Real-time status distributions, resolution velocity, and fault aggregates across campus residences.
+            Where the work stands, how old it is and how long repairs take.
           </p>
         </div>
 
         <div className="page-header-actions">
-          {/* Supervisor / Admin Residence Selector */}
-          {isSupervisorOrAdmin && metrics?.scope?.available_residences && (
+          {/* Supervisor Residence Selector */}
+          {isSupervisor && metrics?.scope?.available_residences && (
             <div className="residence-filter-group">
               <label htmlFor="residence-select" className="sr-only">
                 Filter by Residence
@@ -70,7 +70,7 @@ export function DashboardPage() {
           )}
 
           {/* Warden Scoped Badge */}
-          {!isSupervisorOrAdmin && metrics?.scope && (
+          {!isSupervisor && metrics?.scope && (
             <div className="warden-scope-badge">
               <span className="scope-label">Residence Scope:</span>
               <strong className="scope-name">{metrics.scope.residence_name}</strong>
@@ -170,16 +170,16 @@ export function DashboardPage() {
                   ? `${metrics.summary.average_open_age_hours} hrs`
                   : "0.0 hrs"}
               </div>
-              <div className="kpi-subtext">Active open request turnaround velocity</div>
+              <div className="kpi-subtext">Average age of open requests</div>
             </div>
           </section>
 
-          {/* Grid: Status Distribution & Priority Breakdown */}
+          {/* Grid: Status Distribution & Requests by priority */}
           <div className="dashboard-visual-grid">
             {/* Panel 1: Lifecycle Status Breakdown */}
             <section className="card dashboard-panel-card" aria-label="Status Distribution">
               <div className="panel-header">
-                <h2 className="panel-title">Lifecycle Status Distribution</h2>
+                <h2 className="panel-title">Requests by status</h2>
                 <span className="panel-badge">{metrics.summary.total_requests} total</span>
               </div>
               <div className="status-bars-list">
@@ -198,7 +198,7 @@ export function DashboardPage() {
                           <strong>{count}</strong> ({pct}%)
                         </span>
                       </div>
-                      <div className="progress-track" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                      <div className="progress-track">
                         <div
                           className={`progress-fill fill-${statusKey.toLowerCase().replace(/_/g, "-")}`}
                           style={{ width: `${pct}%` }}
@@ -210,10 +210,10 @@ export function DashboardPage() {
               </div>
             </section>
 
-            {/* Panel 2: Priority Breakdown */}
+            {/* Panel 2: Requests by priority */}
             <section className="card dashboard-panel-card" aria-label="Priority Distribution">
               <div className="panel-header">
-                <h2 className="panel-title">Priority Breakdown</h2>
+                <h2 className="panel-title">Requests by priority</h2>
                 <span className="panel-badge">Triage Classification</span>
               </div>
               <div className="priority-bars-list">
@@ -318,7 +318,7 @@ export function DashboardPage() {
           <div className="dashboard-privacy-notice card">
             <span className="notice-icon"><AppIcon name="shield" size={22} color="var(--color-primary)" /></span>
             <div className="notice-text">
-              <strong>Anonymized Operational Data:</strong> This dashboard displays aggregated counts and velocity metrics. Resident personal identifiers (names, student numbers, room numbers) are strictly excluded in accordance with BR-04 privacy rules.
+              <strong>Totals only.</strong> This dashboard never shows who reported a fault.
             </div>
           </div>
         </>

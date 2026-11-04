@@ -29,7 +29,7 @@ class Command(BaseCommand):
             "--file",
             type=str,
             default=None,
-            help="Path to custom locations CSV file (defaults to data/seed/locations.csv).",
+            help="Path to custom locations CSV file (defaults to backend/data/seed/locations.csv).",
         )
         parser.add_argument(
             "--with-demo",
@@ -42,10 +42,7 @@ class Command(BaseCommand):
         if csv_arg:
             csv_path = Path(csv_arg)
         else:
-            # Default to repo root data/seed/locations.csv or container /app/data/seed/locations.csv
-            csv_path = Path(settings.BASE_DIR).parent / "data" / "seed" / "locations.csv"
-            if not csv_path.exists():
-                csv_path = Path(settings.BASE_DIR) / "data" / "seed" / "locations.csv"
+            csv_path = Path(settings.BASE_DIR) / "data" / "seed" / "locations.csv"
 
         if not csv_path.exists():
             raise CommandError(f"Locations seed file not found: {csv_path}")

@@ -1,6 +1,7 @@
 """Idempotent seed command for role demo users (FR-01, Section 4.8, AGENT_BRIEF item 8)."""
 
 from django.conf import settings
+from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
@@ -9,7 +10,7 @@ from apps.locations.models import Location, LocationKind, Residence
 
 DEMO_USERS = [
     {
-        "email": "resident@spu.ac.za",
+        "email": "resident@example.test",
         "full_name": "Demo Resident",
         "role": Role.RESIDENT,
         "student_number": "20240001",
@@ -17,35 +18,35 @@ DEMO_USERS = [
         "room_label": "A.203",
     },
     {
-        "email": "technician@spu.ac.za",
+        "email": "technician@example.test",
         "full_name": "Demo Technician",
         "role": Role.TECHNICIAN,
         "student_number": None,
         "requires_residence": False,
     },
     {
-        "email": "technician2@spu.ac.za",
+        "email": "technician2@example.test",
         "full_name": "Demo Technician 2",
         "role": Role.TECHNICIAN,
         "student_number": None,
         "requires_residence": False,
     },
     {
-        "email": "supervisor@spu.ac.za",
+        "email": "supervisor@example.test",
         "full_name": "Demo Supervisor",
         "role": Role.SUPERVISOR,
         "student_number": None,
         "requires_residence": False,
     },
     {
-        "email": "warden@spu.ac.za",
+        "email": "warden@example.test",
         "full_name": "Demo Warden",
         "role": Role.WARDEN,
         "student_number": None,
         "requires_residence": True,
     },
     {
-        "email": "admin@spu.ac.za",
+        "email": "admin@example.test",
         "full_name": "Demo Administrator",
         "role": Role.ADMIN,
         "student_number": None,
@@ -129,3 +130,5 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(f"Demo users seeding complete: {created_count} created, {updated_count} updated.")
             )
+
+        call_command("seed_sample_requests")

@@ -8,10 +8,6 @@ from apps.accounts.views import (
     LoginView,
     LogoutView,
     MeView,
-    MfaDisableView,
-    MfaEnableView,
-    MfaSetupView,
-    MfaVerifyView,
     UserAdminCsvImportView,
     UserAdminDetailUpdateView,
     UserAdminListCreateView,
@@ -24,10 +20,6 @@ urlpatterns = [
     path("auth/login", LoginView.as_view(), name="auth-login"),
     path("auth/logout", LogoutView.as_view(), name="auth-logout"),
     path("auth/password", ChangePasswordView.as_view(), name="auth-password"),
-    path("auth/mfa/verify", MfaVerifyView.as_view(), name="auth-mfa-verify"),
-    path("auth/mfa/setup", MfaSetupView.as_view(), name="auth-mfa-setup"),
-    path("auth/mfa/enable", MfaEnableView.as_view(), name="auth-mfa-enable"),
-    path("auth/mfa/disable", MfaDisableView.as_view(), name="auth-mfa-disable"),
     # Current user
     path("me", MeView.as_view(), name="user-me"),
     # User Administration & CSV Import (FR-03, FR-04, SCR-11, SCR-12)

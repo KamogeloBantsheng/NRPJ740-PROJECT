@@ -10,6 +10,8 @@ import { Link } from "react-router-dom";
 import { workflowApi } from "../api/workflow";
 import { StatusBadge } from "../components/StatusBadge";
 import { AppIcon } from "../components/AppIcon";
+import { Pagination } from "../components/Pagination";
+import { usePageOffset } from "../hooks/usePageOffset";
 import type { RequestStatus } from "../types/workflow";
 
 type StatusTab = "TRIAGE_ALL" | "SUBMITTED" | "NEEDS_CLARIFICATION" | "ALL";
@@ -18,6 +20,7 @@ export function SupervisorTriagePage() {
   const [activeTab, setActiveTab] = useState<StatusTab>("TRIAGE_ALL");
   const [selectedCategory, setSelectedCategory] = useState<number>(0);
   const [selectedLocation, setSelectedLocation] = useState<number>(0);
+  const [selectedResidence, setSelectedResidence] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Determine query status parameter based on active tab
@@ -31,18 +34,34 @@ export function SupervisorTriagePage() {
         return "NEEDS_CLARIFICATION";
       case "ALL":
       default:
-        return undefined;
+        return "SUBMITTED,NEEDS_CLARIFICATION,REJECTED,APPROVED,ASSIGNED,IN_PROGRESS,WORK_COMPLETED,REOPENED,VERIFIED_CLOSED";
     }
   }, [activeTab]);
 
+  const filters = {
+    status: statusParam,
+    category_id: selectedCategory,
+    location_id: selectedLocation,
+    residence_id: selectedResidence,
+    search: searchQuery.trim(),
+  };
+  const [offset, setOffset] = usePageOffset(JSON.stringify(filters));
+
   const {
-    data: requests = [],
+    data,
     isLoading,
     isError,
     refetch,
   } = useQuery({
-    queryKey: ["supervisor-requests", statusParam],
-    queryFn: () => workflowApi.getRequests(statusParam),
+    queryKey: ["supervisor-requests", filters, offset],
+    queryFn: () => workflowApi.getTriageQueue({ ...filters, offset }),
+  });
+  const requests = data?.results ?? [];
+  const totalCount = data?.total_count ?? 0;
+
+  const { data: residences = [] } = useQuery({
+    queryKey: ["residences"],
+    queryFn: () => workflowApi.getResidences(),
   });
 
   const { data: categories = [] } = useQuery({
@@ -55,50 +74,18 @@ export function SupervisorTriagePage() {
     queryFn: () => workflowApi.getLocations(),
   });
 
-  // Client-side filtering for category, location, and search text
-  const filteredRequests = useMemo(() => {
-    return requests.filter((req) => {
-      // Category filter
-      if (selectedCategory > 0) {
-        const cat = categories.find((c) => c.id === selectedCategory);
-        if (cat && req.category_name !== cat.name) return false;
-      }
-      // Location filter
-      if (selectedLocation > 0) {
-        const loc = locations.find((l) => l.id === selectedLocation);
-        if (loc && req.location_label !== loc.label) return false;
-      }
-      // Search query (tracking #, resident name, description)
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const tracking = req.tracking_number.toLowerCase();
-        const resident = (req.resident_name || "").toLowerCase();
-        const desc = req.description_snippet.toLowerCase();
-        const locLabel = req.location_label.toLowerCase();
-        return tracking.includes(q) || resident.includes(q) || desc.includes(q) || locLabel.includes(q);
-      }
-      return true;
-    });
-  }, [requests, selectedCategory, selectedLocation, searchQuery, categories, locations]);
-
-  // Metric counts
-  const submittedCount = useMemo(
-    () => requests.filter((r) => r.status === "SUBMITTED").length,
-    [requests]
-  );
-  const needsClarificationCount = useMemo(
-    () => requests.filter((r) => r.status === "NEEDS_CLARIFICATION").length,
-    [requests]
-  );
+  // Metric counts across every page
+  const submittedCount = data?.status_totals.SUBMITTED ?? 0;
+  const needsClarificationCount = data?.status_totals.NEEDS_CLARIFICATION ?? 0;
 
   return (
     <div className="page-container triage-page-container">
       {/* Header */}
       <div className="page-header">
         <div>
-          <h1 className="page-title">Supervisor Triage & Review Queue</h1>
+          <h1 className="page-title">Triage queue</h1>
           <p className="page-subtitle">
-            Moroka Hall Residence &bull; Evaluate incoming requests, request resident clarification, assign priority, or reject invalid faults (FR-08, SCR-06)
+            Oldest first. Approve with a priority, ask a question, or reject with a reason.
           </p>
         </div>
       </div>
@@ -117,7 +104,7 @@ export function SupervisorTriagePage() {
         </div>
         <div className="card metric-card">
           <div className="metric-label">Total in View</div>
-          <div className="metric-value">{filteredRequests.length}</div>
+          <div className="metric-value">{totalCount}</div>
           <div className="metric-hint">Matching current filters</div>
         </div>
       </div>
@@ -181,6 +168,25 @@ export function SupervisorTriagePage() {
           </div>
 
           <div className="filter-item">
+            <label htmlFor="residence-select" className="filter-label">
+              Residence
+            </label>
+            <select
+              id="residence-select"
+              value={selectedResidence}
+              onChange={(e) => setSelectedResidence(Number(e.target.value))}
+              className="select-input"
+            >
+              <option value="0">All Residences</option>
+              {residences.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="filter-item">
             <label htmlFor="category-select" className="filter-label">
               Fault Category
             </label>
@@ -218,7 +224,7 @@ export function SupervisorTriagePage() {
             </select>
           </div>
 
-          {(selectedCategory > 0 || selectedLocation > 0 || searchQuery.trim()) && (
+          {(selectedCategory > 0 || selectedLocation > 0 || selectedResidence > 0 || searchQuery.trim()) && (
             <div className="filter-item reset-filter-item">
               <label className="filter-label">&nbsp;</label>
               <button
@@ -227,6 +233,7 @@ export function SupervisorTriagePage() {
                 onClick={() => {
                   setSelectedCategory(0);
                   setSelectedLocation(0);
+                  setSelectedResidence(0);
                   setSearchQuery("");
                 }}
               >
@@ -252,7 +259,7 @@ export function SupervisorTriagePage() {
             Retry Loading
           </button>
         </div>
-      ) : filteredRequests.length === 0 ? (
+      ) : requests.length === 0 ? (
         <div className="card empty-card">
           <div className="empty-icon"><AppIcon name="check-circle" size={40} color="#10b981" /></div>
           <h2 className="empty-title">Queue is clear!</h2>
@@ -279,7 +286,7 @@ export function SupervisorTriagePage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredRequests.map((req) => (
+                {requests.map((req) => (
                   <tr key={req.id} className="triage-table-row">
                     <td className="tracking-cell">
                       <Link to={`/requests/${req.id}`} className="tracking-link">
@@ -323,6 +330,7 @@ export function SupervisorTriagePage() {
               </tbody>
             </table>
           </div>
+          <Pagination total={totalCount} limit={data?.limit ?? 50} offset={offset} onChange={setOffset} />
         </div>
       )}
     </div>

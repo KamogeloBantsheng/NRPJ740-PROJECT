@@ -5,6 +5,9 @@
 
 import type { ApiErrorPayload } from "../types/auth";
 
+export const NETWORK_FAILED_EVENT = "app:network-failed";
+export const NETWORK_RESTORED_EVENT = "app:network-restored";
+
 export class AppError extends Error {
   code: string;
   fields?: Record<string, string[]>;
@@ -60,11 +63,21 @@ export async function apiClient<T>(
     }
   }
 
-  const response = await fetch(endpoint, {
-    ...options,
-    headers,
-    credentials: "same-origin",
-  });
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      ...options,
+      headers,
+      credentials: "same-origin",
+    });
+  } catch {
+    window.dispatchEvent(new Event(NETWORK_FAILED_EVENT));
+    throw new AppError(0, {
+      code: "NETWORK_ERROR",
+      message: "The server cannot be reached. Check your connection and try again.",
+    });
+  }
+  window.dispatchEvent(new Event(NETWORK_RESTORED_EVENT));
 
   if (!response.ok) {
     let errorPayload: ApiErrorPayload;

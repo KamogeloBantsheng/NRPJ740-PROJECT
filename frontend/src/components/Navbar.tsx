@@ -2,7 +2,7 @@
  * Application Navigation Bar (SCR-01 through SCR-13).
  */
 
-import { Link, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 
 export function Navbar() {
@@ -23,7 +23,7 @@ export function Navbar() {
   return (
     <header className="navbar" role="banner">
       <div className="navbar-container">
-        <Link to={homeHref} className="navbar-brand" aria-label="Home">
+        <Link to={homeHref} className="navbar-brand">
           <div className="brand-mark-box" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -35,6 +35,10 @@ export function Navbar() {
             <span className="brand-title">Moroka Hall Maintenance</span>
           </div>
         </Link>
+
+        {!isAuthenticated && (
+          <p className="navbar-tagline">One record for every fault, from the first report to a verified repair.</p>
+        )}
 
         {isAuthenticated && user && (
           <div className="navbar-user-section">
@@ -51,64 +55,36 @@ export function Navbar() {
             <nav className="navbar-actions" aria-label="Navigation and account actions">
               {user.role === "WARDEN" && (
                 <>
-                  <Link to="/dashboard" className="nav-link">
-                    Dashboard
-                  </Link>
-                  <Link to="/requests/new" className="nav-link">
-                    Report Fault
-                  </Link>
+                  <NavLink to="/dashboard" end className="nav-link">Dashboard</NavLink>
+                  <NavLink to="/requests" end className="nav-link">My Reports</NavLink>
+                  <NavLink to="/requests/new" end className="nav-link">Report Fault</NavLink>
                 </>
               )}
               {user.role === "SUPERVISOR" && (
                 <>
-                  <Link to="/dashboard" className="nav-link">
-                    Dashboard
-                  </Link>
-                  <Link to="/triage" className="nav-link">
-                    Triage Queue
-                  </Link>
-                  <Link to="/dispatch" className="nav-link">
-                    Dispatch
-                  </Link>
-                  <Link to="/verification" className="nav-link">
-                    Verification
-                  </Link>
+                  <NavLink to="/dashboard" end className="nav-link">Dashboard</NavLink>
+                  <NavLink to="/triage" end className="nav-link">Triage Queue</NavLink>
+                  <NavLink to="/dispatch" end className="nav-link">Dispatch</NavLink>
+                  <NavLink to="/verification" end className="nav-link">Verification</NavLink>
                 </>
               )}
               {user.role === "RESIDENT" && (
                 <>
-                  <Link to="/requests" className="nav-link">
-                    My Requests
-                  </Link>
-                  <Link to="/requests/new" className="nav-link">
-                    Report Fault
-                  </Link>
+                  <NavLink to="/requests" end className="nav-link">My Requests</NavLink>
+                  <NavLink to="/requests/new" end className="nav-link">Report Fault</NavLink>
                 </>
               )}
               {user.role === "TECHNICIAN" && (
-                <Link to="/work" className="nav-link">
-                  My Work
-                </Link>
+                <NavLink to="/work" end className="nav-link">My Work</NavLink>
               )}
               {user.role === "ADMIN" && (
                 <>
-                  <Link to="/dashboard" className="nav-link">
-                    Dashboard
-                  </Link>
-                  <Link to="/users" className="nav-link">
-                    Users
-                  </Link>
-                  <Link to="/users/import" className="nav-link">
-                    Import Residents
-                  </Link>
-                  <Link to="/audit-logs" className="nav-link">
-                    Audit Trail
-                  </Link>
+                  <NavLink to="/users" end className="nav-link">Users</NavLink>
+                  <NavLink to="/users/import" end className="nav-link">Import Users</NavLink>
+                  <NavLink to="/audit-logs" end className="nav-link">Audit Trail</NavLink>
                 </>
               )}
-              <Link to="/change-password" className="nav-link">
-                Security
-              </Link>
+              <NavLink to="/change-password" end className="nav-link">Security</NavLink>
               <button
                 type="button"
                 onClick={handleLogout}

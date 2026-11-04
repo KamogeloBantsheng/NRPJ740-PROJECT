@@ -1,10 +1,8 @@
 import csv
-import hashlib
 import io
 import re
 import secrets
 
-import pyotp
 from config.exceptions import (
     ConflictException,
     ForbiddenException,
@@ -12,14 +10,16 @@ from config.exceptions import (
     UnauthenticatedException,
     ValidationException,
 )
+from django.conf import settings
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.password_validation import validate_password
-from django.core import signing
+from django.contrib.sessions.models import Session
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Count, Q
+from django.db.models.functions import Lower
 from django.http import HttpRequest
 from django.utils import timezone
 
@@ -42,10 +42,16 @@ def sanitize_csv_cell(value: str | None) -> str:
 
 
 def get_client_ip(request: HttpRequest) -> str:
-    """Extract client IP address handling reverse proxy X-Forwarded-For headers."""
-    x_forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
-    if x_forwarded:
-        return x_forwarded.split(",")[0].strip()
+    """Return the client IP that the sign-in throttle should count.
+
+    X-Forwarded-For entries to the left of our own proxy are supplied by the client and can
+    be forged, so only the entry appended by a trusted proxy is used. With no trusted proxy
+    configured (local development) the header is ignored completely.
+    """
+    trusted_hops = settings.TRUSTED_PROXY_COUNT
+    forwarded = [ip.strip() for ip in request.META.get("HTTP_X_FORWARDED_FOR", "").split(",") if ip.strip()]
+    if trusted_hops > 0 and len(forwarded) >= trusted_hops:
+        return forwarded[-trusted_hops]
     return request.META.get("REMOTE_ADDR", "127.0.0.1")
 
 
@@ -56,22 +62,12 @@ class AuthService:
     THROTTLE_WINDOW_SECONDS = 60
 
     @classmethod
-    def calculate_lockout_duration(cls, failed_count_24h: int) -> int:
-        """Progressive exponential backoff lockout tiers (NFR-02):
-        - Tier 1: 5-9 failed attempts -> 60s lockout
-        - Tier 2: 10-14 failed attempts -> 900s (15m) lockout
-        - Tier 3: 15-19 failed attempts -> 3600s (1h) lockout
-        - Tier 4: 20+ failed attempts -> 86400s (24h) lockout
-        """
-        if failed_count_24h < 5:
-            return 0
-        if failed_count_24h < 10:
-            return 60
-        if failed_count_24h < 15:
-            return 900
-        if failed_count_24h < 20:
-            return 3600
-        return 86400
+    def _enforce_throttle(cls, *, email: str, ip_address: str) -> None:
+        """Refuse sign-in after 5 failures in one minute for the account or for the IP (NFR-02, AC-01.3)."""
+        for scope in ({"email": email}, {"ip_address": ip_address}):
+            failures = AuditService.count_failed_logins(**scope, window_seconds=cls.THROTTLE_WINDOW_SECONDS)
+            if failures >= cls.MAX_FAILED_ATTEMPTS:
+                raise ThrottledException("Too many failed login attempts. Please try again in a minute.")
 
     @classmethod
     def authenticate(
@@ -80,44 +76,21 @@ class AuthService:
         email: str,
         password: str,
         request: HttpRequest,
-    ) -> tuple[User, bool, str | None]:
-        """Authenticate user by email and password, enforcing progressive throttling and 2FA check."""
+    ) -> User:
+        """Authenticate by email and password and start a rotated session (FR-01)."""
         normalized_email = email.strip().lower()
         ip_address = get_client_ip(request)
 
-        # 1. Check sliding window throttle and progressive lockout (Section 4.4, NFR-02)
-        failed_count_24h = AuditService.count_failed_logins(
-            email=normalized_email,
-            ip_address=ip_address,
-            window_seconds=86400,
-        )
-        lockout_duration = cls.calculate_lockout_duration(failed_count_24h)
-        if lockout_duration > 0:
-            latest_time = AuditService.get_latest_failed_login_time(
-                email=normalized_email,
-                ip_address=ip_address,
-            )
-            if latest_time:
-                elapsed = (timezone.now() - latest_time).total_seconds()
-                if elapsed < lockout_duration:
-                    remaining = int(lockout_duration - elapsed)
-                    if lockout_duration <= 60:
-                        msg = "Too many failed login attempts. Please try again in a minute."
-                    elif lockout_duration <= 900:
-                        msg = f"Too many failed login attempts. Account locked for {remaining} seconds."
-                    elif lockout_duration <= 3600:
-                        msg = f"Too many failed login attempts. Account locked for {max(1, remaining // 60)} minutes."
-                    else:
-                        msg = "Too many failed login attempts. Account locked for 24 hours. Contact an administrator."
-                    raise ThrottledException(msg)
-            else:
-                raise ThrottledException("Too many failed login attempts. Please try again in a minute.")
+        cls._enforce_throttle(email=normalized_email, ip_address=ip_address)
 
-        # 2. Look up user
         user = User.objects.filter(email__iexact=normalized_email).first()
 
-        # Generic error message per NFR-02 to prevent account enumeration
+        # One generic message whichever value was wrong, so accounts cannot be enumerated (AC-01.2)
         generic_error = "Invalid email or password."
+
+        if user is None:
+            # Hash anyway so an unknown email takes as long as a wrong password
+            User().set_password(password)
 
         if user is None or not user.check_password(password):
             AuditService.record(
@@ -131,7 +104,7 @@ class AuthService:
             )
             raise UnauthenticatedException(generic_error)
 
-        # 3. Check active status (BR-07)
+        # Active accounts only (BR-07)
         if not user.is_active:
             AuditService.record(
                 action=AuditAction.LOGIN_FAILED,
@@ -145,19 +118,13 @@ class AuthService:
             )
             raise UnauthenticatedException(generic_error)
 
-        # 4. Check Multi-Factor Authentication requirement
-        if user.is_mfa_enabled and user.totp_secret:
-            mfa_token = MFAService.create_login_mfa_token(user)
-            return user, True, mfa_token
-
-        # Successful single-factor login: update last_login and cycle session (ADR-03)
         user.last_login = timezone.now()
         user.save(update_fields=["last_login"])
 
-        # Cycle session to prevent session fixation and attach authenticated user
+        # Rotates the session identifier to prevent session fixation (ADR-03)
         django_login(request, user)
 
-        return user, False, None
+        return user
 
     @classmethod
     def logout(cls, request: HttpRequest) -> None:
@@ -206,41 +173,33 @@ class AuthService:
 
         # Update password hash and clear mandatory change flag
         was_forced = user.must_change_password
-        user.set_password(new_password)
-        user.must_change_password = False
-        user.save(update_fields=["password", "must_change_password"])
+        with transaction.atomic():
+            user.set_password(new_password)
+            user.must_change_password = False
+            user.save(update_fields=["password", "must_change_password"])
+
+            AuditService.record(
+                action=AuditAction.PASSWORD_CHANGED,
+                actor=user,
+                target_user=user,
+                details={"forced": was_forced},
+            )
 
         if request is not None:
             update_session_auth_hash(request, user)
 
-        # Audit event
-        AuditService.record(
-            action=AuditAction.PASSWORD_CHANGED,
-            actor=user,
-            target_user=user,
-            details={"forced": was_forced},
-        )
-
 
 def terminate_user_sessions(user_id: int) -> None:
-    """Terminate and delete all active sessions for a given user (BR-07)."""
-    try:
-        from django.contrib.sessions.models import Session
-
-        for session in Session.objects.filter(expire_date__gte=timezone.now()):
-            try:
-                data = session.get_decoded()
-                if data.get("_auth_user_id") == str(user_id):
-                    session.delete()
-            except Exception:  # noqa: BLE001
-                pass
-    except Exception:  # noqa: BLE001
-        pass
+    """Delete every active session belonging to a user (BR-07)."""
+    for session in Session.objects.filter(expire_date__gte=timezone.now()):
+        if session.get_decoded().get("_auth_user_id") == str(user_id):
+            session.delete()
 
 
 def generate_temp_password(length: int = 12) -> str:
     """Generate a high-entropy temporary password meeting security requirements."""
-    alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*"
+    # No "@": a password starting with it reads as a formula when the credentials file opens in Excel
+    alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!#$%&*"
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
@@ -358,29 +317,30 @@ class UserAdminService:
 
         temp_password = generate_temp_password(12)
 
-        user = User.objects.create(
-            email=normalized_email,
-            full_name=sanitize_csv_cell(trimmed_name),
-            role=role,
-            residence=residence,
-            assigned_location=assigned_location,
-            student_number=sanitize_csv_cell(trimmed_student) if trimmed_student else None,
-            must_change_password=True,
-            is_active=True,
-        )
-        user.set_password(temp_password)
-        user.save(update_fields=["password"])
+        with transaction.atomic():
+            user = User(
+                email=normalized_email,
+                full_name=sanitize_csv_cell(trimmed_name),
+                role=role,
+                residence=residence,
+                assigned_location=assigned_location,
+                student_number=sanitize_csv_cell(trimmed_student) if trimmed_student else None,
+                must_change_password=True,
+                is_active=True,
+            )
+            user.set_password(temp_password)
+            user.save()
 
-        AuditService.record(
-            action=AuditAction.USER_CREATED,
-            actor=actor,
-            target_user=user,
-            details={
-                "email": user.email,
-                "role": user.role,
-                "full_name": user.full_name,
-            },
-        )
+            AuditService.record(
+                action=AuditAction.USER_CREATED,
+                actor=actor,
+                target_user=user,
+                details={
+                    "email": user.email,
+                    "role": user.role,
+                    "full_name": user.full_name,
+                },
+            )
 
         return user, temp_password
 
@@ -397,152 +357,201 @@ class UserAdminService:
         assigned_location_id: int | None = None,
         student_number: str | None = None,
     ) -> User:
-        """Update user profile, role, or active status enforcing BR-07 guards (TC-06)."""
+        """Update a user in one transaction, enforcing the BR-07 guards (FR-03, TC-06).
+
+        Audit events and session removal are part of the transaction, so a refused update
+        leaves no trace. The row lock is the same one TransitionService takes on a Technician,
+        so a Technician cannot be deactivated and given work at the same instant (ADR-02).
+        """
+        with transaction.atomic():
+            # Admins are locked in id order first, so the last-Admin guard is safe when two
+            # Admins change each other at the same moment.
+            if user.role == Role.ADMIN:
+                list(User.objects.select_for_update().filter(role=Role.ADMIN, is_active=True).order_by("id"))
+            user = User.objects.select_for_update().get(id=user.id)
+
+            cls._apply_active_change(actor, user, is_active)
+            cls._apply_role_change(actor, user, role, residence_id, student_number)
+            cls._apply_residence_change(user, residence_id)
+            cls._apply_student_number_change(user, student_number)
+            cls._apply_room_change(user, assigned_location_id)
+
+            if full_name is not None and full_name.strip():
+                user.full_name = sanitize_csv_cell(full_name.strip())
+
+            user.save()
+            return user
+
+    @staticmethod
+    def _has_active_work_orders(user: User) -> bool:
         from apps.workflow.models import WorkOrder
 
-        # 1. Active status guard check (BR-07, TC-06)
-        if is_active is not None and is_active != user.is_active:
-            if is_active is False:
-                # Cannot deactivate the last active Admin
-                if user.role == Role.ADMIN:
-                    active_admins = User.objects.filter(role=Role.ADMIN, is_active=True).exclude(id=user.id).count()
-                    if active_admins < 1:
-                        raise ConflictException("Cannot deactivate the last active administrator.")
+        return WorkOrder.objects.filter(technician=user, ended_at__isnull=True).exists()
 
-                # Cannot deactivate a Technician with active work orders
-                if user.role == Role.TECHNICIAN:
-                    has_active_orders = WorkOrder.objects.filter(technician=user, ended_at__isnull=True).exists()
-                    if has_active_orders:
-                        raise ConflictException("Cannot deactivate a technician with active work orders.")
+    @staticmethod
+    def _is_last_active_admin(user: User) -> bool:
+        return not User.objects.filter(role=Role.ADMIN, is_active=True).exclude(id=user.id).exists()
 
-                user.is_active = False
-                terminate_user_sessions(user.id)
-                AuditService.record(
-                    action=AuditAction.USER_DEACTIVATED,
-                    actor=actor,
-                    target_user=user,
-                    details={"email": user.email},
-                )
-            else:
-                user.is_active = True
-                AuditService.record(
-                    action=AuditAction.USER_REACTIVATED,
-                    actor=actor,
-                    target_user=user,
-                    details={"email": user.email},
-                )
+    @classmethod
+    def _apply_active_change(cls, actor: User, user: User, is_active: bool | None) -> None:
+        if is_active is None or is_active == user.is_active:
+            return
 
-        # 2. Role change guard check (BR-07, TC-06)
-        if role is not None and role != user.role:
-            if role not in Role.values:
-                raise ValidationException(f"Invalid role '{role}'.", fields={"role": ["Invalid role."]})
-
-            # Cannot demote last active Admin
-            if user.role == Role.ADMIN and role != Role.ADMIN and user.is_active:
-                active_admins = User.objects.filter(role=Role.ADMIN, is_active=True).exclude(id=user.id).count()
-                if active_admins < 1:
-                    raise ConflictException("Cannot demote the last active administrator.")
-
-            # Cannot change role of Technician with active work orders
-            if user.role == Role.TECHNICIAN and role != Role.TECHNICIAN:
-                has_active_orders = WorkOrder.objects.filter(technician=user, ended_at__isnull=True).exists()
-                if has_active_orders:
-                    raise ConflictException("Cannot change role of a technician with active work orders.")
-
-            old_role = user.role
-            user.role = role
-
-            # Adjust residence / student_number according to new role constraints
-            if role in (Role.RESIDENT, Role.WARDEN):
-                if residence_id:
-                    res = Residence.objects.filter(id=residence_id).first()
-                    if not res:
-                        raise ValidationException("Invalid residence.", fields={"residence": ["Residence not found."]})
-                    user.residence = res
-                elif not user.residence:
-                    user.residence = Residence.objects.filter(is_active=True).first()
-            else:
-                user.residence = None
-
-            if role == Role.RESIDENT:
-                if student_number:
-                    user.student_number = student_number.strip()
-                elif not user.student_number:
-                    raise ValidationException(
-                        "Student number required for resident.",
-                        fields={"student_number": ["Required."]},
-                    )
-            else:
-                user.student_number = None
-
+        if is_active:
+            user.is_active = True
             AuditService.record(
-                action=AuditAction.USER_ROLE_CHANGED,
+                action=AuditAction.USER_REACTIVATED,
                 actor=actor,
                 target_user=user,
-                details={"from_role": old_role, "to_role": role},
+                details={"email": user.email},
+            )
+            return
+
+        if user.role == Role.ADMIN and cls._is_last_active_admin(user):
+            raise ConflictException("Cannot deactivate the last active administrator.")
+        if user.role == Role.TECHNICIAN and cls._has_active_work_orders(user):
+            raise ConflictException("Cannot deactivate a technician with active work orders.")
+
+        user.is_active = False
+        terminate_user_sessions(user.id)
+        AuditService.record(
+            action=AuditAction.USER_DEACTIVATED,
+            actor=actor,
+            target_user=user,
+            details={"email": user.email},
+        )
+
+    @classmethod
+    def _apply_role_change(
+        cls,
+        actor: User,
+        user: User,
+        role: str | None,
+        residence_id: int | None,
+        student_number: str | None,
+    ) -> None:
+        if role is None or role == user.role:
+            return
+
+        if user.role == Role.ADMIN and user.is_active and cls._is_last_active_admin(user):
+            raise ConflictException("Cannot demote the last active administrator.")
+        if user.role == Role.TECHNICIAN and cls._has_active_work_orders(user):
+            raise ConflictException("Cannot change role of a technician with active work orders.")
+
+        old_role = user.role
+        user.role = role
+
+        if role in (Role.RESIDENT, Role.WARDEN):
+            if not residence_id and not user.residence_id:
+                user.residence = Residence.objects.filter(is_active=True).first()
+        else:
+            user.residence = None
+
+        if role != Role.RESIDENT:
+            user.student_number = None
+        elif not (student_number or "").strip() and not user.student_number:
+            raise ValidationException(
+                "Student number required for resident.",
+                fields={"student_number": ["Student number is required for residents."]},
             )
 
-        # 3. Room assignment update
-        target_role = role if role is not None else user.role
-        if target_role == Role.RESIDENT:
-            if assigned_location_id is not None:
-                if assigned_location_id in (0, -1):
-                    user.assigned_location = None
-                else:
-                    assigned_loc = Location.objects.filter(
-                        id=assigned_location_id,
-                        residence=user.residence,
-                        is_active=True,
-                        kind=LocationKind.ROOM,
-                    ).first()
-                    if not assigned_loc:
-                        raise ValidationException(
-                            "Invalid room selection.",
-                            fields={
-                                "assigned_location_id": [
-                                    "Selected room does not exist or is not a room in this residence."
-                                ]
-                            },
-                        )
-                    user.assigned_location = assigned_loc
-        else:
+        AuditService.record(
+            action=AuditAction.USER_ROLE_CHANGED,
+            actor=actor,
+            target_user=user,
+            details={"from_role": old_role, "to_role": role},
+        )
+
+    @staticmethod
+    def _apply_residence_change(user: User, residence_id: int | None) -> None:
+        if residence_id is None or residence_id == user.residence_id:
+            return
+
+        if user.role not in (Role.RESIDENT, Role.WARDEN):
+            raise ValidationException(
+                "Residence can only be set for residents and wardens.",
+                fields={"residence": ["Residence can only be set for residents and wardens."]},
+            )
+
+        residence = Residence.objects.filter(id=residence_id).first()
+        if not residence:
+            raise ValidationException("Invalid residence.", fields={"residence": ["Residence not found."]})
+
+        user.residence = residence
+        # A room belongs to one residence, so it cannot follow the user to another
+        if user.assigned_location and user.assigned_location.residence_id != residence.id:
+            user.assigned_location = None
+
+    @staticmethod
+    def _apply_student_number_change(user: User, student_number: str | None) -> None:
+        trimmed = (student_number or "").strip()
+        if user.role != Role.RESIDENT or not trimmed or trimmed == user.student_number:
+            return
+
+        if User.objects.filter(student_number__iexact=trimmed).exclude(id=user.id).exists():
+            raise ValidationException(
+                "A user with this student number already exists.",
+                fields={"student_number": ["A user with this student number already exists."]},
+            )
+        user.student_number = sanitize_csv_cell(trimmed)
+
+    @staticmethod
+    def _apply_room_change(user: User, assigned_location_id: int | None) -> None:
+        if user.role != Role.RESIDENT:
             if assigned_location_id:
                 raise ValidationException(
                     "Assigned location can only be set for residents.",
                     fields={"assigned_location_id": ["Assigned location can only be set for residents."]},
                 )
             user.assigned_location = None
+            return
 
-        # 4. Other fields
-        if full_name is not None and full_name.strip():
-            user.full_name = sanitize_csv_cell(full_name.strip())
+        if assigned_location_id is None:
+            return
+        if assigned_location_id in (0, -1):
+            user.assigned_location = None
+            return
 
-        user.save()
-        return user
+        room = Location.objects.filter(
+            id=assigned_location_id,
+            residence=user.residence,
+            is_active=True,
+            kind=LocationKind.ROOM,
+        ).first()
+        if not room:
+            raise ValidationException(
+                "Invalid room selection.",
+                fields={"assigned_location_id": ["Selected room does not exist or is not a room in this residence."]},
+            )
+        user.assigned_location = room
 
     @classmethod
     def reset_password(cls, *, actor: User, user: User) -> str:
         """Reset user password to a newly generated temporary password (FR-03)."""
         temp_password = generate_temp_password(12)
-        user.set_password(temp_password)
-        user.must_change_password = True
-        user.save(update_fields=["password", "must_change_password"])
+        with transaction.atomic():
+            user.set_password(temp_password)
+            user.must_change_password = True
+            user.save(update_fields=["password", "must_change_password"])
 
-        # Flush active sessions
-        terminate_user_sessions(user.id)
+            terminate_user_sessions(user.id)
 
-        AuditService.record(
-            action=AuditAction.PASSWORD_RESET,
-            actor=actor,
-            target_user=user,
-            details={"email": user.email, "forced": True},
-        )
+            AuditService.record(
+                action=AuditAction.PASSWORD_RESET,
+                actor=actor,
+                target_user=user,
+                details={"email": user.email, "forced": True},
+            )
 
         return temp_password
 
 
 class UserImportService:
-    """All-or-nothing batch CSV import service for resident accounts (FR-04, NFR-03, TC-07, TC-08, TC-09)."""
+    """All-or-nothing batch CSV import of user accounts (FR-04, NFR-03, TC-07, TC-08, TC-09).
+
+    Columns: email, full_name, student_number, and optionally role, residence and room.
+    A blank role means RESIDENT; a blank residence means the active residence (Moroka Hall).
+    """
 
     MAX_FILE_BYTES = 2 * 1024 * 1024  # 2 MB limit
     MAX_ROWS = 2000
@@ -550,95 +559,164 @@ class UserImportService:
     EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
     @classmethod
-    def import_residents_csv(
+    def import_users_csv(
         cls,
         *,
         actor: User,
         csv_file_bytes: bytes,
     ) -> dict:
-        """Validate and atomically import resident accounts from CSV file (all-or-nothing)."""
-        # 1. Authorize caller
+        """Validate the whole file, then create every account or none."""
         if actor.role != Role.ADMIN:
             raise ForbiddenException("Only administrators can import user accounts.")
 
-        # 2. File size constraint (TC-09)
+        reader = cls._open_reader(csv_file_bytes)
+        header_map = {col.strip().lower(): col for col in reader.fieldnames}
+        for required_column in ("email", "full_name", "student_number"):
+            if required_column not in header_map:
+                raise ValidationException(
+                    f"CSV missing mandatory column: '{required_column}'. "
+                    "Required headers: email, full_name, student_number",
+                    fields={"headers": [f"Missing '{required_column}' column."]},
+                )
+
+        residences = {r.name.lower(): r for r in Residence.objects.filter(is_active=True)}
+        default_residence = Residence.objects.filter(is_active=True).first()
+        if not default_residence:
+            raise ValidationException("No active residence found in the system to assign users to.")
+
+        rows_data, errors = cls._validate_rows(reader, header_map, residences, default_residence)
+        errors.extend(cls._find_existing_collisions(rows_data))
+
+        if errors:
+            errors.sort(key=lambda item: item["row"])
+            raise ValidationException(
+                "CSV validation failed. No accounts were created.",
+                fields={"bad_rows": errors},
+            )
+
+        created_records = cls._create_all(actor, rows_data)
+        return {
+            "created_count": len(created_records),
+            "credentials": created_records,
+        }
+
+    @classmethod
+    def _open_reader(cls, csv_file_bytes: bytes) -> csv.DictReader:
         if len(csv_file_bytes) > cls.MAX_FILE_BYTES:
             raise ValidationException(
                 f"File size exceeds the 2 MB maximum limit ({len(csv_file_bytes)} bytes).",
                 fields={"file": ["File size exceeds 2 MB limit."]},
             )
 
-        # 3. UTF-8 decode check (TC-09)
         try:
             content = csv_file_bytes.decode("utf-8-sig")
-        except UnicodeDecodeError:
+        except UnicodeDecodeError as exc:
             raise ValidationException(
                 "CSV file must be valid UTF-8 encoded text.",
                 fields={"file": ["File is not valid UTF-8 encoded."]},
-            )
+            ) from exc
 
-        # 4. Parse CSV
         reader = csv.DictReader(io.StringIO(content))
-        if not reader.fieldnames:
+        try:
+            has_headers = bool(reader.fieldnames)
+        except csv.Error as exc:
+            raise cls._unreadable_file() from exc
+        if not has_headers:
             raise ValidationException(
                 "CSV file is empty or missing a header row.",
                 fields={"file": ["CSV file contains no headers."]},
             )
+        return reader
 
-        # Normalize header keys
-        header_map = {col.strip().lower(): col for col in reader.fieldnames}
-        for req_col in ("email", "full_name", "student_number"):
-            if req_col not in header_map:
-                raise ValidationException(
-                    f"CSV missing mandatory column: '{req_col}'. Required headers: email, full_name, student_number",
-                    fields={"headers": [f"Missing '{req_col}' column."]},
-                )
+    @staticmethod
+    def _unreadable_file() -> ValidationException:
+        return ValidationException(
+            "CSV file could not be read.",
+            fields={"file": ["File is not a valid CSV document."]},
+        )
 
-        default_residence = Residence.objects.filter(is_active=True).first()
-        if not default_residence:
-            raise ValidationException("No active residence found in the system to assign residents to.")
-
+    @classmethod
+    def _validate_rows(cls, reader, header_map, residences, default_residence) -> tuple[list[dict], list[dict]]:
         rows_data = []
         errors = []
         seen_emails = set()
         seen_students = set()
-
-        # Row limit check (TC-09)
+        rooms_by_residence = {}
         row_count = 0
 
-        for idx, row in enumerate(reader, start=2):  # row 1 is header
-            row_count += 1
-            if row_count > cls.MAX_ROWS:
-                raise ValidationException(
-                    f"CSV file exceeds the maximum allowed row count of {cls.MAX_ROWS}.",
-                    fields={"file": [f"Maximum row limit is {cls.MAX_ROWS}."]},
+        try:
+            for row_number, row in enumerate(reader, start=2):  # row 1 is the header
+                row_count += 1
+                if row_count > cls.MAX_ROWS:
+                    raise ValidationException(
+                        f"CSV file exceeds the maximum allowed row count of {cls.MAX_ROWS}.",
+                        fields={"file": [f"Maximum row limit is {cls.MAX_ROWS}."]},
+                    )
+
+                parsed, row_errors = cls._validate_row(
+                    row, header_map, residences, default_residence, seen_emails, seen_students, rooms_by_residence
                 )
+                if row_errors:
+                    errors.append({"row": row_number, "errors": row_errors})
+                else:
+                    rows_data.append({"row": row_number, **parsed})
+        except csv.Error as exc:
+            raise cls._unreadable_file() from exc
 
-            raw_email = row.get(header_map["email"], "").strip()
-            raw_name = row.get(header_map["full_name"], "").strip()
-            raw_student = row.get(header_map["student_number"], "").strip()
+        if row_count == 0:
+            raise ValidationException(
+                "CSV file contains no data rows.",
+                fields={"file": ["File contains no data rows."]},
+            )
+        return rows_data, errors
 
-            email_lower = raw_email.lower()
+    @classmethod
+    def _validate_row(
+        cls, row, header_map, residences, default_residence, seen_emails, seen_students, rooms_by_residence
+    ) -> tuple[dict, list[str]]:
+        def cell(*names: str) -> str:
+            """Read a trimmed cell; a short row leaves missing cells as None."""
+            for name in names:
+                if name in header_map:
+                    value = (row.get(header_map[name]) or "").strip()
+                    if value:
+                        return value
+            return ""
 
-            row_errors = []
+        row_errors = []
 
-            # Email validation
-            if not raw_email:
-                row_errors.append("Email is required.")
-            elif not cls.EMAIL_REGEX.match(raw_email):
-                row_errors.append(f"Invalid email format: '{raw_email}'.")
-            elif email_lower in seen_emails:
-                row_errors.append(f"Duplicate email '{raw_email}' within CSV file.")
-            else:
-                seen_emails.add(email_lower)
+        raw_email = cell("email")
+        email_lower = raw_email.lower()
+        if not raw_email:
+            row_errors.append("Email is required.")
+        elif not cls.EMAIL_REGEX.match(raw_email):
+            row_errors.append(f"Invalid email format: '{raw_email}'.")
+        elif email_lower in seen_emails:
+            row_errors.append(f"Duplicate email '{raw_email}' within CSV file.")
+        else:
+            seen_emails.add(email_lower)
 
-            # Name validation
-            if not raw_name:
-                row_errors.append("Full name is required.")
-            elif len(raw_name) > 150:
-                row_errors.append("Full name exceeds 150 characters.")
+        raw_name = cell("full_name")
+        if not raw_name:
+            row_errors.append("Full name is required.")
+        elif len(raw_name) > 150:
+            row_errors.append("Full name exceeds 150 characters.")
 
-            # Student number validation
+        role = cell("role").upper() or Role.RESIDENT
+        if role not in Role.values:
+            row_errors.append(f"Invalid role '{role}'. Must be one of: {', '.join(Role.values)}.")
+
+        raw_residence = cell("residence")
+        residence = None
+        if role in (Role.RESIDENT, Role.WARDEN):
+            residence = residences.get(raw_residence.lower()) if raw_residence else default_residence
+            if residence is None:
+                row_errors.append(f"Unknown or inactive residence '{raw_residence}'.")
+        elif raw_residence:
+            row_errors.append("Only residents and wardens can have a residence.")
+
+        raw_student = cell("student_number")
+        if role == Role.RESIDENT:
             if not raw_student:
                 row_errors.append("Student number is required.")
             elif len(raw_student) > 20:
@@ -647,220 +725,98 @@ class UserImportService:
                 row_errors.append(f"Duplicate student number '{raw_student}' within CSV file.")
             else:
                 seen_students.add(raw_student)
+        elif raw_student:
+            row_errors.append("Only residents can have a student number.")
 
-            if row_errors:
-                errors.append({"row": idx, "errors": row_errors})
-            else:
-                rows_data.append({
-                    "row": idx,
-                    "email": email_lower,
-                    "full_name": sanitize_csv_cell(raw_name),
-                    "student_number": sanitize_csv_cell(raw_student),
+        raw_room = cell("room", "room_number")
+        room = None
+        if raw_room:
+            if role != Role.RESIDENT:
+                row_errors.append("Only residents can be assigned a room.")
+            elif residence is not None:
+                room = cls._room_lookup(rooms_by_residence, residence).get(raw_room.lower())
+                if room is None:
+                    row_errors.append(f"Room '{raw_room}' was not found in {residence.name}.")
+
+        return (
+            {
+                "email": email_lower,
+                "full_name": sanitize_csv_cell(raw_name),
+                "student_number": sanitize_csv_cell(raw_student) if raw_student else None,
+                "role": role,
+                "residence": residence,
+                "room": room,
+            },
+            row_errors,
+        )
+
+    @staticmethod
+    def _room_lookup(rooms_by_residence: dict, residence: Residence) -> dict:
+        if residence.id not in rooms_by_residence:
+            rooms = Location.objects.filter(residence=residence, kind=LocationKind.ROOM, is_active=True)
+            rooms_by_residence[residence.id] = {room.label.lower(): room for room in rooms}
+        return rooms_by_residence[residence.id]
+
+    @staticmethod
+    def _find_existing_collisions(rows_data: list[dict]) -> list[dict]:
+        """Compare against existing accounts; emails are compared case-insensitively (AC-04.2)."""
+        errors = []
+        emails = {item["email"] for item in rows_data}
+        students = {item["student_number"] for item in rows_data if item["student_number"]}
+
+        existing_emails = set(
+            User.objects.annotate(email_lower=Lower("email"))
+            .filter(email_lower__in=emails)
+            .values_list("email_lower", flat=True)
+        )
+        existing_students = set(
+            User.objects.filter(student_number__in=students).values_list("student_number", flat=True)
+        )
+
+        for item in rows_data:
+            if item["email"] in existing_emails:
+                errors.append({
+                    "row": item["row"],
+                    "errors": [f"Email '{item['email']}' is already registered in the system."],
                 })
+            if item["student_number"] in existing_students:
+                errors.append({
+                    "row": item["row"],
+                    "errors": [f"Student number '{item['student_number']}' is already registered in the system."],
+                })
+        return errors
 
-        if row_count == 0:
-            raise ValidationException(
-                "CSV file contains no data rows.",
-                fields={"file": ["File contains no data rows."]},
-            )
-
-        # Database collision check against existing records
-        if seen_emails:
-            existing_emails = set(User.objects.filter(email__in=seen_emails).values_list("email", flat=True))
-            for item in rows_data:
-                if item["email"] in existing_emails:
-                    errors.append({
-                        "row": item["row"],
-                        "errors": [f"Email '{item['email']}' is already registered in the system."],
-                    })
-
-        if seen_students:
-            existing_students = set(
-                User.objects.filter(student_number__in=seen_students).values_list("student_number", flat=True)
-            )
-            for item in rows_data:
-                if item["student_number"] in existing_students:
-                    errors.append({
-                        "row": item["row"],
-                        "errors": [f"Student number '{item['student_number']}' is already registered in the system."],
-                    })
-
-        # All-or-nothing check (TC-08)
-        if errors:
-            errors.sort(key=lambda x: x["row"])
-            raise ValidationException(
-                "CSV validation failed. No accounts were created.",
-                fields={"bad_rows": errors},
-            )
-
-        # Atomic insertion of all records (TC-07)
+    @staticmethod
+    def _create_all(actor: User, rows_data: list[dict]) -> list[dict]:
         created_records = []
         with transaction.atomic():
             for item in rows_data:
                 temp_pwd = generate_temp_password(12)
-                user = User.objects.create(
+                user = User(
                     email=item["email"],
                     full_name=item["full_name"],
                     student_number=item["student_number"],
-                    role=Role.RESIDENT,
-                    residence=default_residence,
+                    role=item["role"],
+                    residence=item["residence"],
+                    assigned_location=item["room"],
                     must_change_password=True,
                     is_active=True,
                 )
                 user.set_password(temp_pwd)
-                user.save(update_fields=["password"])
+                user.save()
 
                 created_records.append({
                     "id": user.id,
                     "email": user.email,
                     "full_name": user.full_name,
-                    "student_number": user.student_number,
+                    "student_number": user.student_number or "",
+                    "role": user.role,
                     "temporary_password": temp_pwd,
                 })
 
             AuditService.record(
                 action=AuditAction.USER_IMPORTED,
                 actor=actor,
-                details={
-                    "total_imported": len(created_records),
-                    "residence_id": default_residence.id,
-                },
+                details={"total_imported": len(created_records)},
             )
-
-        return {
-            "created_count": len(created_records),
-            "credentials": created_records,
-        }
-
-
-class MFAService:
-    """Manages Time-based One-Time Password (TOTP) multi-factor authentication."""
-
-    SALT_MFA_SETUP = "nrpj740_mfa_setup_salt"
-    SALT_MFA_LOGIN = "nrpj740_mfa_login_salt"
-
-    @classmethod
-    def generate_setup(cls, user: User) -> dict:
-        """Generate temporary TOTP secret and provisioning URI for authenticator enrollment."""
-        secret = pyotp.random_base32()
-        totp = pyotp.TOTP(secret)
-        provisioning_uri = totp.provisioning_uri(
-            name=user.email,
-            issuer_name="SPU Moroka Maintenance",
-        )
-        setup_token = signing.dumps({"user_id": user.id, "secret": secret}, salt=cls.SALT_MFA_SETUP)
-        return {
-            "secret": secret,
-            "provisioning_uri": provisioning_uri,
-            "setup_token": setup_token,
-        }
-
-    @classmethod
-    def enable_mfa(cls, *, user: User, code: str, setup_token: str) -> list[str]:
-        """Verify initial code, generate 8 backup codes, and activate 2FA for user."""
-        try:
-            data = signing.loads(setup_token, salt=cls.SALT_MFA_SETUP, max_age=600)
-        except (signing.BadSignature, signing.SignatureExpired):
-            raise ValidationException("Setup session has expired or is invalid. Please restart MFA setup.")
-
-        if data.get("user_id") != user.id:
-            raise ForbiddenException("Invalid setup token for current user.")
-
-        secret = data.get("secret")
-        totp = pyotp.TOTP(secret)
-        cleaned_code = code.strip().replace(" ", "")
-        if not totp.verify(cleaned_code, valid_window=1):
-            raise ValidationException(
-                "Invalid authenticator code. Check your device clock and try again.",
-                fields={"code": ["Invalid 6-digit code."]},
-            )
-
-        # Generate 8 random backup codes (8-char hex)
-        raw_backup_codes = [secrets.token_hex(4).upper() for _ in range(8)]
-        hashed_backup_codes = [
-            hashlib.sha256(bc.encode("utf-8")).hexdigest()
-            for bc in raw_backup_codes
-        ]
-
-        user.totp_secret = secret
-        user.is_mfa_enabled = True
-        user.backup_codes = hashed_backup_codes
-        user.save(update_fields=["totp_secret", "is_mfa_enabled", "backup_codes"])
-
-        AuditService.record(
-            action=AuditAction.MFA_ENABLED,
-            actor=user,
-            target_user=user,
-            details={"email": user.email},
-        )
-
-        return raw_backup_codes
-
-    @classmethod
-    def disable_mfa(cls, *, user: User, password: str) -> None:
-        """Disable 2FA after validating user's current password."""
-        if not user.check_password(password):
-            raise ValidationException("Incorrect password.", fields={"password": ["Incorrect password."]})
-
-        user.is_mfa_enabled = False
-        user.totp_secret = None
-        user.backup_codes = []
-        user.save(update_fields=["is_mfa_enabled", "totp_secret", "backup_codes"])
-
-        AuditService.record(
-            action=AuditAction.MFA_DISABLED,
-            actor=user,
-            target_user=user,
-            details={"email": user.email},
-        )
-
-    @classmethod
-    def create_login_mfa_token(cls, user: User) -> str:
-        """Issue short-lived signed token (valid 5 min) for pending login 2FA verification."""
-        return signing.dumps({"user_id": user.id}, salt=cls.SALT_MFA_LOGIN)
-
-    @classmethod
-    def verify_login_mfa(cls, *, mfa_token: str, code: str, request: HttpRequest) -> User:
-        """Verify 6-digit TOTP code or backup code to complete sign-in."""
-        try:
-            data = signing.loads(mfa_token, salt=cls.SALT_MFA_LOGIN, max_age=300)
-        except (signing.BadSignature, signing.SignatureExpired):
-            raise UnauthenticatedException("MFA session expired. Please sign in again.")
-
-        user = User.objects.filter(id=data.get("user_id")).first()
-        if not user or not user.is_active or not user.is_mfa_enabled or not user.totp_secret:
-            raise UnauthenticatedException("Invalid MFA state. Please sign in again.")
-
-        cleaned_code = code.strip().replace(" ", "").upper()
-        verified = False
-
-        totp = pyotp.TOTP(user.totp_secret)
-        if totp.verify(cleaned_code, valid_window=1):
-            verified = True
-        else:
-            # Check backup code
-            code_hash = hashlib.sha256(cleaned_code.encode("utf-8")).hexdigest()
-            if code_hash in user.backup_codes:
-                verified = True
-                user.backup_codes = [h for h in user.backup_codes if h != code_hash]
-                user.save(update_fields=["backup_codes"])
-
-        if not verified:
-            AuditService.record(
-                action=AuditAction.LOGIN_FAILED,
-                actor=user,
-                target_user=user,
-                details={
-                    "email": user.email,
-                    "ip_address": get_client_ip(request),
-                    "reason": "invalid_mfa_code",
-                },
-            )
-            raise UnauthenticatedException("Invalid authenticator code or backup code.")
-
-        user.last_login = timezone.now()
-        user.save(update_fields=["last_login"])
-        django_login(request, user)
-
-        return user
-
+        return created_records
