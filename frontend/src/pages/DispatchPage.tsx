@@ -280,7 +280,7 @@ export function DispatchPage() {
             <input
               id="dispatch-search"
               type="text"
-              placeholder="Search by tracking #, technician, resident, or description..."
+              placeholder="Search by tracking #, resident, location, or description..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="text-input"

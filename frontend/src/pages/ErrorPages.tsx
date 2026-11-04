@@ -1,5 +1,5 @@
 /**
- * System and error pages: 401, 403 and 404 (Table 5.3, Section 6.3).
+ * System and error pages: 401, 403 and 404 (Table 5.3, Section 6.2).
  */
 
 import { Link } from "react-router-dom";

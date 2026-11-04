@@ -129,7 +129,7 @@ def standard_exception_handler(exc: Exception, context: dict[str, Any]) -> Respo
             code = "THROTTLED"
             message = "Too many requests. Please try again later."
         elif response.status_code == status.HTTP_400_BAD_REQUEST:
-            # Map DRF validation errors to HTTP 422 per Section 6.3
+            # Map DRF validation errors to HTTP 422 per Section 6.2
             response.status_code = 422
             code = "VALIDATION_ERROR"
             message = "Validation failure."

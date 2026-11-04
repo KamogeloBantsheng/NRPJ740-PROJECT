@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 const PASSWORD = process.env.E2E_DEMO_PASSWORD ?? "change-me-demo-password";
 
 async function signIn(page: Page, role: string) {
+  await page.goto("about:blank"); // Leave the app first: a page still open would see the session end and redirect
   await page.context().clearCookies();
   await page.goto("/login");
   await page.getByLabel("University Email Address").fill(`${role}@example.test`);

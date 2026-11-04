@@ -15,7 +15,7 @@ A robust, role-based maintenance management web application connecting Residents
 ## 2. Prerequisites
 
 - **Python:** 3.12+ (Python 3.14 on local dev, Python 3.12 in container profiles)
-- **Node.js:** 20+ & npm
+- **Node.js:** 24 & npm (needed for the client and browser tests, which CI also runs on Node 24)
 - **Docker:** Docker Engine with Compose v2
 - **PostgreSQL:** 16 (hosted via Docker)
 
@@ -27,7 +27,7 @@ To run the complete production-grade stack (Nginx reverse proxy, Django WSGI as 
 
 ```bash
 # 1. Clone the repository and enter directory
-git clone https://github.com/KamogeloBantsheng/NRPJ740-PROJECT.git && cd NRPJ740-PROJECT
+git clone --branch v1.0.2 https://github.com/KamogeloBantsheng/NRPJ740-PROJECT.git && cd NRPJ740-PROJECT
 
 # 2. Create environment configuration
 cp .env.example .env

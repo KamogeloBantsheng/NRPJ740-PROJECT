@@ -1,6 +1,6 @@
 /**
  * Native fetch API client with CSRF protection and standardized error mapping.
- * Conforms to Section 3 (plain browser fetch, no Axios).
+ * Plain browser fetch, no Axios.
  */
 
 import type { ApiErrorPayload } from "../types/auth";

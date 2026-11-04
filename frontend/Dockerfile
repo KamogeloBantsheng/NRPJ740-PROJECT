@@ -9,7 +9,7 @@ RUN npm ci --legacy-peer-deps
 COPY . /app/
 RUN npm run build
 
-# Stage 2: Production Nginx Server (Section 5.8, Table 5.10)
+# Stage 2: Production Nginx Server (Section 5.8)
 FROM nginx:alpine AS runner
 
 # Remove default static files

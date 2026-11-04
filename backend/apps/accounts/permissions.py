@@ -1,4 +1,4 @@
-"""Permission policies and role-based guards (BR-07, Table 5.2)."""
+"""Permission policies and role-based guards (BR-07, Section 5.7)."""
 
 from typing import Any
 
