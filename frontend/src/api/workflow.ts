@@ -7,7 +7,8 @@ import type {
   FaultCategoryItem,
   LocationItem,
   MaintenanceRequestDetail,
-  MaintenanceRequestSummary,
+  PagedRequests,
+  ResidenceItem,
   SubmitRequestPayload,
   TechnicianItem,
   TimelineEvent,
@@ -18,6 +19,19 @@ export interface RequestFilters {
   status?: string;
   category_id?: number;
   location_id?: number;
+  residence_id?: number;
+  search?: string;
+  mine?: boolean;
+  offset?: number;
+}
+
+function requestListUrl(path: string, filters: RequestFilters = {}): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.append(key, String(value));
+  }
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
 }
 
 export const workflowApi = {
@@ -29,17 +43,16 @@ export const workflowApi = {
     return apiClient<FaultCategoryItem[]>("/api/categories/");
   },
 
-  getRequests: async (filters?: string | RequestFilters): Promise<MaintenanceRequestSummary[]> => {
-    const params = new URLSearchParams();
-    if (typeof filters === "string") {
-      if (filters) params.append("status", filters);
-    } else if (filters) {
-      if (filters.status) params.append("status", filters.status);
-      if (filters.category_id) params.append("category_id", String(filters.category_id));
-      if (filters.location_id) params.append("location_id", String(filters.location_id));
-    }
-    const qs = params.toString();
-    return apiClient<MaintenanceRequestSummary[]>(qs ? `/api/requests/?${qs}` : "/api/requests/");
+  getResidences: async (): Promise<ResidenceItem[]> => {
+    return apiClient<ResidenceItem[]>("/api/residences/");
+  },
+
+  getRequests: async (filters?: RequestFilters): Promise<PagedRequests> => {
+    return apiClient<PagedRequests>(requestListUrl("/api/requests/", filters));
+  },
+
+  getTriageQueue: async (filters?: RequestFilters): Promise<PagedRequests> => {
+    return apiClient<PagedRequests>(requestListUrl("/api/triage-queue/", filters));
   },
 
   getRequestDetail: async (id: number | string): Promise<MaintenanceRequestDetail> => {
@@ -71,16 +84,7 @@ export const workflowApi = {
     return apiClient<TechnicianItem[]>("/api/technicians/");
   },
 
-  getWorkQueue: async (filters?: string | RequestFilters): Promise<MaintenanceRequestSummary[]> => {
-    const params = new URLSearchParams();
-    if (typeof filters === "string") {
-      if (filters) params.append("status", filters);
-    } else if (filters) {
-      if (filters.status) params.append("status", filters.status);
-      if (filters.category_id) params.append("category_id", String(filters.category_id));
-      if (filters.location_id) params.append("location_id", String(filters.location_id));
-    }
-    const qs = params.toString();
-    return apiClient<MaintenanceRequestSummary[]>(qs ? `/api/work-queue/?${qs}` : "/api/work-queue/");
+  getWorkQueue: async (filters?: RequestFilters): Promise<PagedRequests> => {
+    return apiClient<PagedRequests>(requestListUrl("/api/work-queue/", filters));
   },
 };

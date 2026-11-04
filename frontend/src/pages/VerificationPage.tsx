@@ -12,6 +12,8 @@ import { workflowApi } from "../api/workflow";
 import { AppError } from "../api/client";
 import { StatusBadge } from "../components/StatusBadge";
 import { AppIcon } from "../components/AppIcon";
+import { Pagination } from "../components/Pagination";
+import { usePageOffset } from "../hooks/usePageOffset";
 import type { MaintenanceRequestSummary, RequestStatus, TransitionPayload } from "../types/workflow";
 
 type VerificationTab = "AWAITING_VERIFICATION" | "REOPENED" | "CLOSED" | "ALL";
@@ -49,15 +51,25 @@ export function VerificationPage() {
     }
   }, [activeTab]);
 
+  const filters = {
+    status: statusParam,
+    category_id: selectedCategory,
+    location_id: selectedLocation,
+    search: searchQuery.trim(),
+  };
+  const [offset, setOffset] = usePageOffset(JSON.stringify(filters));
+
   const {
-    data: requests = [],
+    data,
     isLoading,
     isError,
     refetch,
   } = useQuery({
-    queryKey: ["verification-requests", statusParam],
-    queryFn: () => workflowApi.getRequests(statusParam),
+    queryKey: ["verification-requests", filters, offset],
+    queryFn: () => workflowApi.getRequests({ ...filters, offset }),
   });
+  const requests = data?.results ?? [];
+  const totalCount = data?.total_count ?? 0;
 
   const { data: categories = [] } = useQuery({
     queryKey: ["categories"],
@@ -81,11 +93,11 @@ export function VerificationPage() {
       closeModal();
       if (mode === "VERIFY_CLOSE") {
         setActionSuccess(
-          `Request ${updated.tracking_number} has been verified and permanently CLOSED (T10). Active work order completed.`
+          `Request ${updated.tracking_number} has been verified and permanently CLOSED. Active work order completed.`
         );
       } else {
         setActionSuccess(
-          `Request ${updated.tracking_number} has been REOPENED with feedback (T11). Technician assignment retained.`
+          `Request ${updated.tracking_number} has been REOPENED with feedback. Technician assignment retained.`
         );
       }
     },
@@ -132,7 +144,7 @@ export function VerificationPage() {
 
     if (activeModal.mode === "REOPEN") {
       if (trimmed.length < 10) {
-        setActionError("Reopening feedback reason must be at least 10 characters long (BR-02).");
+        setActionError("Reopening feedback reason must be at least 10 characters long.");
         return;
       }
       transitionMutation.mutate({
@@ -155,42 +167,10 @@ export function VerificationPage() {
     }
   };
 
-  // Filter requests
-  const filteredRequests = useMemo(() => {
-    return requests.filter((req) => {
-      if (selectedCategory > 0) {
-        const cat = categories.find((c) => c.id === selectedCategory);
-        if (cat && req.category_name !== cat.name) return false;
-      }
-      if (selectedLocation > 0) {
-        const loc = locations.find((l) => l.id === selectedLocation);
-        if (loc && req.location_label !== loc.label) return false;
-      }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const tracking = req.tracking_number.toLowerCase();
-        const desc = req.description_snippet.toLowerCase();
-        const loc = req.location_label.toLowerCase();
-        const tech = (req.assigned_technician_name || "").toLowerCase();
-        return tracking.includes(q) || desc.includes(q) || loc.includes(q) || tech.includes(q);
-      }
-      return true;
-    });
-  }, [requests, selectedCategory, selectedLocation, searchQuery, categories, locations]);
-
   // Counts
-  const awaitingCount = useMemo(
-    () => requests.filter((r) => r.status === "WORK_COMPLETED").length,
-    [requests]
-  );
-  const reopenedCount = useMemo(
-    () => requests.filter((r) => r.status === "REOPENED").length,
-    [requests]
-  );
-  const closedCount = useMemo(
-    () => requests.filter((r) => r.status === "VERIFIED_CLOSED").length,
-    [requests]
-  );
+  const awaitingCount = data?.status_totals.WORK_COMPLETED ?? 0;
+  const reopenedCount = data?.status_totals.REOPENED ?? 0;
+  const closedCount = data?.status_totals.VERIFIED_CLOSED ?? 0;
 
   return (
     <div className="page-container verification-page-container">
@@ -199,7 +179,7 @@ export function VerificationPage() {
         <div>
           <h1 className="page-title">Supervisor Verification & Quality Review</h1>
           <p className="page-subtitle">
-            Moroka Hall Residence &bull; Inspect completed repairs, verify technician quality, record closure notes (T10), or reopen tasks (T11) (FR-12, SCR-08)
+            Moroka Hall Residence &bull; Inspect completed repairs, verify technician quality, record closure notes, or reopen tasks
           </p>
         </div>
       </div>
@@ -223,7 +203,7 @@ export function VerificationPage() {
         <div className="card metric-card">
           <div className="metric-label">Awaiting Verification</div>
           <div className="metric-value metric-warning">{awaitingCount}</div>
-          <div className="metric-hint">Completed repairs pending supervisor inspection (T10/T11)</div>
+          <div className="metric-hint">Finished repairs waiting for your check</div>
         </div>
         <div className="card metric-card">
           <div className="metric-label">Reopened Tasks</div>
@@ -367,7 +347,7 @@ export function VerificationPage() {
             Retry Loading
           </button>
         </div>
-      ) : filteredRequests.length === 0 ? (
+      ) : requests.length === 0 ? (
         <div className="card empty-card">
           <div className="empty-icon"><AppIcon name="check-circle" size={40} color="#10b981" /></div>
           <h2 className="empty-title">Queue is clear!</h2>
@@ -395,7 +375,7 @@ export function VerificationPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredRequests.map((req) => (
+                {requests.map((req) => (
                   <tr key={req.id} className="triage-table-row">
                     <td>
                       {req.priority ? (
@@ -451,7 +431,7 @@ export function VerificationPage() {
                             type="button"
                             className="btn btn-success btn-sm"
                             onClick={() => openVerifyModal(req)}
-                            title="Verify work and permanently close request (T10)"
+                            title="Verify work and permanently close request"
                           >
                             Verify & Close
                           </button>
@@ -459,7 +439,7 @@ export function VerificationPage() {
                             type="button"
                             className="btn btn-outline-warning btn-sm ml-1"
                             onClick={() => openReopenModal(req)}
-                            title="Reopen request with feedback for technician (T11)"
+                            title="Reopen request with feedback for technician"
                           >
                             Reopen
                           </button>
@@ -475,6 +455,7 @@ export function VerificationPage() {
               </tbody>
             </table>
           </div>
+          <Pagination total={totalCount} limit={data?.limit ?? 50} offset={offset} onChange={setOffset} />
         </div>
       )}
 
@@ -485,8 +466,8 @@ export function VerificationPage() {
             <div className="modal-header">
               <h2 className="modal-title">
                 {activeModal.mode === "VERIFY_CLOSE"
-                  ? `Verify & Close: ${activeModal.request.tracking_number} (T10)`
-                  : `Reopen Request: ${activeModal.request.tracking_number} (T11)`}
+                  ? `Verify & Close: ${activeModal.request.tracking_number}`
+                  : `Reopen Request: ${activeModal.request.tracking_number}`}
               </h2>
               <button
                 type="button"
@@ -529,7 +510,7 @@ export function VerificationPage() {
               {activeModal.mode === "VERIFY_CLOSE" ? (
                 <>
                   <p className="modal-info-text">
-                    Closing this request is permanent and terminal (BR-06). The active work order will end as <strong>COMPLETED</strong>, and the completion timestamp will be recorded.
+                    Closing this request is permanent and terminal. The active work order will end as <strong>COMPLETED</strong>, and the completion timestamp will be recorded.
                   </p>
                   <div className="form-group">
                     <label htmlFor="verify-note" className="form-label">
@@ -548,7 +529,7 @@ export function VerificationPage() {
               ) : (
                 <>
                   <p className="modal-info-text text-warning">
-                    Reopening will return the request status to <strong>REOPENED</strong> so the assigned technician can perform additional corrective work. Mandatory feedback of at least 10 characters is required (BR-02).
+                    Reopening will return the request status to <strong>REOPENED</strong> so the assigned technician can perform additional corrective work. Mandatory feedback of at least 10 characters is required.
                   </p>
                   <div className="form-group">
                     <div className="label-row">
@@ -599,8 +580,8 @@ export function VerificationPage() {
                   {transitionMutation.isPending
                     ? "Processing..."
                     : activeModal.mode === "VERIFY_CLOSE"
-                    ? "Confirm & Close Request (T10)"
-                    : "Reopen Request (T11)"}
+                    ? "Confirm & Close Request"
+                    : "Reopen Request"}
                 </button>
               </div>
             </form>

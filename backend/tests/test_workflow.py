@@ -622,8 +622,19 @@ class TestWorkflowLifecycle:
             status=RequestStatus.SUBMITTED,
         )
 
-        # Illegal action from SUBMITTED: START_WORK is not permitted from SUBMITTED (409 Conflict)
+        # Illegal action from SUBMITTED: VERIFY_CLOSE is not permitted from SUBMITTED (409 Conflict)
         resp_illegal = supervisor_client.post(
+            f"/api/requests/{req.id}/transition/",
+            {
+                "action": "VERIFY_CLOSE",
+                "expected_status": RequestStatus.SUBMITTED,
+            },
+            format="json",
+        )
+        assert resp_illegal.status_code == status.HTTP_409_CONFLICT
+
+        # Role mismatch: START_WORK belongs to the Technician, so a Supervisor gets 403 in any state
+        resp_wrong_role = supervisor_client.post(
             f"/api/requests/{req.id}/transition/",
             {
                 "action": "START_WORK",
@@ -631,7 +642,7 @@ class TestWorkflowLifecycle:
             },
             format="json",
         )
-        assert resp_illegal.status_code == status.HTTP_409_CONFLICT
+        assert resp_wrong_role.status_code == status.HTTP_403_FORBIDDEN
 
         # Role mismatch: Resident attempting supervisor APPROVE action returns 403 Forbidden
         resp_role_mismatch = resident_client.post(

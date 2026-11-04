@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authApi } from "../api/auth";
 import type { LoginPayload, User } from "../types/auth";
 import { AppError } from "../api/client";
+import { expireSession } from "./sessionExpiry";
 import { AuthContext, getRoleHome } from "./useAuth";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -19,6 +20,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return await authApi.getMe();
       } catch (err) {
         if (err instanceof AppError && err.statusCode === 401) {
+          expireSession(queryClient);
           return null;
         }
         throw err;
@@ -30,17 +32,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginMutation = useMutation({
     mutationFn: (payload: LoginPayload) => authApi.login(payload),
-    onSuccess: (result) => {
-      if (!("requires_mfa" in result && result.requires_mfa)) {
-        queryClient.setQueryData(["auth", "me"], result);
-      }
-    },
-  });
-
-  const verifyMfaMutation = useMutation({
-    mutationFn: (payload: { mfa_token: string; code: string }) => authApi.verifyMfa(payload),
-    onSuccess: (verifiedUser) => {
-      queryClient.setQueryData(["auth", "me"], verifiedUser);
+    onSuccess: (signedInUser) => {
+      queryClient.setQueryData(["auth", "me"], signedInUser);
     },
   });
 
@@ -56,17 +49,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await logoutMutation.mutateAsync();
   }, [logoutMutation]);
 
+  const refreshUser = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+  }, [queryClient]);
+
   const value = useMemo(
     () => ({
       user,
       isLoading,
       isAuthenticated: Boolean(user && user.is_active),
       login: loginMutation.mutateAsync,
-      verifyMfa: verifyMfaMutation.mutateAsync,
       logout: handleLogout,
+      refreshUser,
       getRoleHome,
     }),
-    [user, isLoading, loginMutation.mutateAsync, verifyMfaMutation.mutateAsync, handleLogout]
+    [user, isLoading, loginMutation.mutateAsync, handleLogout, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

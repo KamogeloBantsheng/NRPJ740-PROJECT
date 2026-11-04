@@ -6,8 +6,9 @@ and provides role-scoped authenticated API clients and test data factories.
 
 import pytest
 from apps.accounts.models import Role, User
+from apps.audit.models import AuditEvent
 from apps.locations.models import FaultCategory, Location, LocationKind, Residence
-from apps.workflow.models import MaintenanceRequest, RequestStatus, WorkOrder
+from apps.workflow.models import MaintenanceRequest, RequestStatus
 from apps.workflow.rules import sync_transition_rules
 from django.db import DatabaseError, connection
 from rest_framework.test import APIClient
@@ -153,7 +154,7 @@ def category_electrical(db) -> FaultCategory:
     """Secondary fault category."""
     cat, _ = FaultCategory.objects.get_or_create(
         name="Electrical",
-        defaults={"description": "Lights, plugs, switches", "is_active": True},
+        defaults={"is_active": True},
     )
     return cat
 
@@ -348,53 +349,46 @@ def admin_client(admin_user) -> APIClient:
     return client
 
 
-def assert_database_invariants():
-    """Verifies all six core database invariants defined in Section 5.6 (INV-1 to INV-6)."""
-    # INV-1: Every request has a valid status in RequestStatus
-    valid_statuses = set(RequestStatus.values)
-    invalid_status_reqs = MaintenanceRequest.objects.exclude(status__in=valid_statuses).count()
-    assert invalid_status_reqs == 0, f"Found {invalid_status_reqs} requests with invalid status"
+def assert_database_invariants(known_audit_ids: set[int] | None = None) -> set[int]:
+    """Check INV-1 to INV-6 from report Section 5.6 and return the audit ids now present.
 
-    # INV-2: If priority is set, it must be valid; APPROVED+ requests must have priority
-    approved_without_priority = MaintenanceRequest.objects.filter(
-        status__in=[
-            RequestStatus.APPROVED,
-            RequestStatus.ASSIGNED,
-            RequestStatus.IN_PROGRESS,
-            RequestStatus.WORK_COMPLETED,
-            RequestStatus.VERIFIED_CLOSED,
-            RequestStatus.REOPENED,
-        ],
-        priority__isnull=True,
-    ).count()
-    assert approved_without_priority == 0, f"Found {approved_without_priority} approved+ requests without priority"
+    Pass the ids from the previous call so INV-6 can prove no event has disappeared.
+    """
+    active_states = {
+        RequestStatus.ASSIGNED,
+        RequestStatus.IN_PROGRESS,
+        RequestStatus.WORK_COMPLETED,
+        RequestStatus.REOPENED,
+    }
+    terminal_states = {RequestStatus.REJECTED, RequestStatus.VERIFIED_CLOSED}
+    needs_priority = active_states | {RequestStatus.APPROVED, RequestStatus.VERIFIED_CLOSED}
 
-    # INV-3: closed_at set exactly when REJECTED or VERIFIED_CLOSED
-    terminal_without_closed_at = MaintenanceRequest.objects.filter(
-        status__in=[RequestStatus.REJECTED, RequestStatus.VERIFIED_CLOSED],
-        closed_at__isnull=True,
-    ).count()
-    assert terminal_without_closed_at == 0, f"Found {terminal_without_closed_at} terminal requests without closed_at"
+    for req in MaintenanceRequest.objects.select_related("location", "resident"):
+        active_orders = list(req.work_orders.filter(ended_at__isnull=True).select_related("technician"))
 
-    non_terminal_with_closed_at = MaintenanceRequest.objects.exclude(
-        status__in=[RequestStatus.REJECTED, RequestStatus.VERIFIED_CLOSED],
-    ).filter(closed_at__isnull=False).count()
-    assert non_terminal_with_closed_at == 0, f"Found {non_terminal_with_closed_at} non-terminal requests with closed_at"
+        # INV-1: an active work order exists exactly in these states, and never more than one
+        expected = 1 if req.status in active_states else 0
+        assert len(active_orders) == expected, f"INV-1: {req.tracking_number} {req.status} has {len(active_orders)}"
 
-    # INV-4: At most one active work order per request (ended_at IS NULL)
-    from django.db.models import Count, Q
-    multi_active_wo = (
-        MaintenanceRequest.objects.annotate(
-            active_wo_count=Count("work_orders", filter=Q(work_orders__ended_at__isnull=True))
-        )
-        .filter(active_wo_count__gt=1)
-        .count()
-    )
-    assert multi_active_wo == 0, f"Found {multi_active_wo} requests with multiple active work orders"
+        # INV-2: the latest status-changing audit event matches the current status
+        latest = AuditEvent.objects.filter(request_id=req.id).exclude(to_status=None).order_by("-id").first()
+        assert latest is not None and latest.to_status == req.status, f"INV-2: {req.tracking_number}"
 
-    # INV-5: Work order end_reason is null exactly when ended_at is null
-    inconsistent_wo = WorkOrder.objects.filter(
-        (Q(ended_at__isnull=True) & Q(end_reason__isnull=False))
-        | (Q(ended_at__isnull=False) & Q(end_reason__isnull=True))
-    ).count()
-    assert inconsistent_wo == 0, f"Found {inconsistent_wo} work orders with inconsistent end state"
+        # INV-3: the Technician on an active work order is an active Technician
+        for order in active_orders:
+            assert order.technician.role == Role.TECHNICIAN, f"INV-3: {req.tracking_number}"
+            assert order.technician.is_active, f"INV-3: {req.tracking_number}"
+
+        # INV-4: the Location is in the reporter's residence
+        assert req.location.residence_id == req.resident.residence_id, f"INV-4: {req.tracking_number}"
+
+        # INV-5: priority is set once approved, and closed_at exactly for terminal states
+        if req.status in needs_priority:
+            assert req.priority is not None, f"INV-5: {req.tracking_number} has no priority"
+        assert (req.closed_at is not None) == (req.status in terminal_states), f"INV-5: {req.tracking_number}"
+
+    # INV-6: no audit event is ever removed
+    audit_ids = set(AuditEvent.objects.values_list("id", flat=True))
+    if known_audit_ids is not None:
+        assert known_audit_ids <= audit_ids, "INV-6: an audit event disappeared"
+    return audit_ids

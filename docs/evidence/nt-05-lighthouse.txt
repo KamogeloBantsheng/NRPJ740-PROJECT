@@ -1,0 +1,5 @@
+SCR-01 /login 100
+SCR-04 /requests/new 100
+SCR-06 /triage 100
+SCR-09 /work 100
+SCR-10 /dashboard 100

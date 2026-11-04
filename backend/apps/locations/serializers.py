@@ -2,7 +2,15 @@
 
 from rest_framework import serializers
 
-from apps.locations.models import FaultCategory, Location
+from apps.locations.models import FaultCategory, Location, Residence
+
+
+class ResidenceSerializer(serializers.ModelSerializer):
+    """Serializer for residence reference data."""
+
+    class Meta:
+        model = Residence
+        fields = ("id", "name")
 
 
 class LocationSerializer(serializers.ModelSerializer):

@@ -12,6 +12,8 @@ import { workflowApi } from "../api/workflow";
 import { AppError } from "../api/client";
 import { StatusBadge } from "../components/StatusBadge";
 import { AppIcon } from "../components/AppIcon";
+import { Pagination } from "../components/Pagination";
+import { usePageOffset } from "../hooks/usePageOffset";
 import type { MaintenanceRequestSummary, RequestStatus, TransitionPayload } from "../types/workflow";
 
 type DispatchTab = "PENDING_ASSIGNMENT" | "ACTIVE_DISPATCHES" | "ALL";
@@ -47,15 +49,20 @@ export function DispatchPage() {
     }
   }, [activeTab]);
 
+  const filters = { status: statusParam, category_id: selectedCategory, search: searchQuery.trim() };
+  const [offset, setOffset] = usePageOffset(JSON.stringify(filters));
+
   const {
-    data: requests = [],
+    data,
     isLoading: isRequestsLoading,
     isError: isRequestsError,
     refetch: refetchRequests,
   } = useQuery({
-    queryKey: ["dispatch-requests", statusParam],
-    queryFn: () => workflowApi.getRequests(statusParam),
+    queryKey: ["dispatch-requests", filters, offset],
+    queryFn: () => workflowApi.getRequests({ ...filters, offset }),
   });
+  const requests = data?.results ?? [];
+  const totalCount = data?.total_count ?? 0;
 
   const {
     data: technicians = [],
@@ -153,12 +160,12 @@ export function DispatchPage() {
     } else {
       // Reassign validation
       if (trimmed.length < 10) {
-        setFormError("Reassignment reason must be at least 10 characters long (BR-02).");
+        setFormError("Reassignment reason must be at least 10 characters long.");
         return;
       }
       const selectedTech = technicians.find((t) => t.id === Number(selectedTechId));
       if (selectedTech && selectedTech.full_name === targetReq.assigned_technician_name) {
-        setFormError("Cannot reassign to the same technician. Please select a different technician (BR-01, BR-03).");
+        setFormError("Cannot reassign to the same technician. Please select a different technician.");
         return;
       }
 
@@ -174,42 +181,12 @@ export function DispatchPage() {
     }
   };
 
-  // Filter requests
-  const filteredRequests = useMemo(() => {
-    return requests.filter((req) => {
-      if (selectedCategory > 0) {
-        const cat = categories.find((c) => c.id === selectedCategory);
-        if (cat && req.category_name !== cat.name) return false;
-      }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const tracking = req.tracking_number.toLowerCase();
-        const tech = (req.assigned_technician_name || "").toLowerCase();
-        const resident = (req.resident_name || "").toLowerCase();
-        const desc = req.description_snippet.toLowerCase();
-        const loc = req.location_label.toLowerCase();
-        return (
-          tracking.includes(q) ||
-          tech.includes(q) ||
-          resident.includes(q) ||
-          desc.includes(q) ||
-          loc.includes(q)
-        );
-      }
-      return true;
-    });
-  }, [requests, selectedCategory, searchQuery, categories]);
-
   // Counts
-  const pendingCount = useMemo(
-    () => requests.filter((r) => r.status === "APPROVED").length,
-    [requests]
-  );
-  const activeDispatchesCount = useMemo(
-    () =>
-      requests.filter((r) => ["ASSIGNED", "IN_PROGRESS", "REOPENED"].includes(r.status)).length,
-    [requests]
-  );
+  const pendingCount = data?.status_totals.APPROVED ?? 0;
+  const activeDispatchesCount =
+    (data?.status_totals.ASSIGNED ?? 0) +
+    (data?.status_totals.IN_PROGRESS ?? 0) +
+    (data?.status_totals.REOPENED ?? 0);
 
   return (
     <div className="page-container dispatch-page-container">
@@ -218,7 +195,7 @@ export function DispatchPage() {
         <div>
           <h1 className="page-title">Supervisor Dispatch & Work-Order Assignment</h1>
           <p className="page-subtitle">
-            Moroka Hall Residence &bull; Assign approved faults to active technicians, manage reassignments, and balance workloads (FR-10, FR-11, SCR-07)
+            Moroka Hall Residence &bull; Assign approved faults to active technicians, manage reassignments, and balance workloads
           </p>
         </div>
       </div>
@@ -237,7 +214,7 @@ export function DispatchPage() {
           <div>
             <strong>No active technicians available:</strong> There are currently no active
             technicians registered in the system. Work orders cannot be assigned until an administrator
-            creates or activates technician accounts (SCR-07, BR-07).
+            creates or activates technician accounts.
           </div>
         </div>
       )}
@@ -247,7 +224,7 @@ export function DispatchPage() {
         <div className="card metric-card">
           <div className="metric-label">Approved & Awaiting Assignment</div>
           <div className="metric-value metric-accent">{pendingCount}</div>
-          <div className="metric-hint">Ready for technician assignment (T6)</div>
+          <div className="metric-hint">Ready for technician assignment</div>
         </div>
         <div className="card metric-card">
           <div className="metric-label">Active Work Dispatches</div>
@@ -369,7 +346,7 @@ export function DispatchPage() {
             Retry Loading
           </button>
         </div>
-      ) : filteredRequests.length === 0 ? (
+      ) : requests.length === 0 ? (
         <div className="card empty-card">
           <div className="empty-icon"><AppIcon name="check-circle" size={36} color="#10b981" /></div>
           <h2 className="empty-title">No requests awaiting dispatch</h2>
@@ -396,7 +373,7 @@ export function DispatchPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredRequests.map((req) => (
+                {requests.map((req) => (
                   <tr key={req.id} className="triage-table-row">
                     <td className="tracking-cell">
                       <Link to={`/requests/${req.id}`} className="tracking-link">
@@ -452,7 +429,7 @@ export function DispatchPage() {
                               : "Assign work order to technician"
                           }
                         >
-                          Assign (T6) &rarr;
+                          Assign &rarr;
                         </button>
                       ) : ["ASSIGNED", "IN_PROGRESS", "REOPENED"].includes(req.status) ? (
                         <button
@@ -466,7 +443,7 @@ export function DispatchPage() {
                               : "Reassign work order to a different technician"
                           }
                         >
-                          Reassign (T7) &rarr;
+                          Reassign &rarr;
                         </button>
                       ) : (
                         <Link to={`/requests/${req.id}`} className="btn btn-secondary btn-sm">
@@ -479,6 +456,7 @@ export function DispatchPage() {
               </tbody>
             </table>
           </div>
+          <Pagination total={totalCount} limit={data?.limit ?? 50} offset={offset} onChange={setOffset} />
         </div>
       )}
 
@@ -489,8 +467,8 @@ export function DispatchPage() {
             <div className="modal-header">
               <h2 className="modal-title">
                 {activeActionModal.mode === "ASSIGN"
-                  ? `Assign Technician to ${activeActionModal.request.tracking_number} (T6)`
-                  : `Reassign Technician for ${activeActionModal.request.tracking_number} (T7)`}
+                  ? `Assign Technician to ${activeActionModal.request.tracking_number}`
+                  : `Reassign Technician for ${activeActionModal.request.tracking_number}`}
               </h2>
               <button
                 type="button"
@@ -622,8 +600,8 @@ export function DispatchPage() {
                   {transitionMutation.isPending
                     ? "Dispatching..."
                     : activeActionModal.mode === "ASSIGN"
-                    ? "Confirm Assignment (T6)"
-                    : "Confirm Reassignment (T7)"}
+                    ? "Confirm Assignment"
+                    : "Confirm Reassignment"}
                 </button>
               </div>
             </form>

@@ -1,5 +1,5 @@
 /**
- * System and error pages: 401, 403, 404, and role dashboard placeholders (Table 5.3, Section 6.3).
+ * System and error pages: 401, 403 and 404 (Table 5.3, Section 6.3).
  */
 
 import { Link } from "react-router-dom";
@@ -57,44 +57,6 @@ export function NotFoundPage() {
         <Link to={homePath} className="btn btn-primary">
           Return Home
         </Link>
-      </div>
-    </main>
-  );
-}
-
-interface RoleHomeViewProps {
-  title: string;
-  roleDescription: string;
-  nextSliceName: string;
-}
-
-export function RoleHomeView({ title, roleDescription, nextSliceName }: RoleHomeViewProps) {
-  const { user } = useAuth();
-
-  return (
-    <main className="role-workspace-container">
-      <div className="workspace-card">
-        <div className="workspace-header">
-          <span className={`role-badge role-${user?.role.toLowerCase()}`}>
-            {user?.role}
-          </span>
-          <h1 className="workspace-title">{title}</h1>
-          <p className="workspace-user-welcome">
-            Logged in as <strong>{user?.full_name}</strong> ({user?.email})
-          </p>
-        </div>
-
-        <div className="workspace-info-box">
-          <h2 className="info-title">Role Scope & Authorization</h2>
-          <p>{roleDescription}</p>
-        </div>
-
-        <div className="workspace-next-slice-box">
-          <span className="slice-tag">Active Delivery Pipeline</span>
-          <p className="slice-text">
-            Authentication and Session Layer (Slice 1) verified active. Operational workflow screens for this role will activate in <strong>{nextSliceName}</strong>.
-          </p>
-        </div>
       </div>
     </main>
   );

@@ -1,9 +1,13 @@
+import logging
+
 from django.db import DatabaseError, connection
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema(
@@ -37,8 +41,10 @@ def health_check(request):
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
             cursor.fetchone()
-    except DatabaseError as exc:
-        db_status = f"unhealthy: {exc}"
+    except DatabaseError:
+        # This endpoint is public, so the detail goes to the log and not the response
+        logger.exception("Health check could not reach the database.")
+        db_status = "unavailable"
         http_status = status.HTTP_503_SERVICE_UNAVAILABLE
 
     return Response(

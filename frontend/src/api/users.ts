@@ -3,6 +3,7 @@
  */
 
 import { apiClient } from "./client";
+import type { PagedResult } from "../types/workflow";
 import type {
   AdminUserItem,
   CreateUserPayload,
@@ -16,10 +17,11 @@ export interface UserFilters {
   search?: string;
   role?: string;
   is_active?: boolean;
+  offset?: number;
 }
 
 export const usersApi = {
-  getUsers: async (filters?: UserFilters): Promise<AdminUserItem[]> => {
+  getUsers: async (filters?: UserFilters): Promise<PagedResult<AdminUserItem>> => {
     const params = new URLSearchParams();
     if (filters?.search?.trim()) {
       params.append("search", filters.search.trim());
@@ -30,8 +32,11 @@ export const usersApi = {
     if (filters?.is_active !== undefined) {
       params.append("is_active", String(filters.is_active));
     }
+    if (filters?.offset) {
+      params.append("offset", String(filters.offset));
+    }
     const qs = params.toString();
-    return apiClient<AdminUserItem[]>(qs ? `/api/users/?${qs}` : "/api/users/");
+    return apiClient<PagedResult<AdminUserItem>>(qs ? `/api/users/?${qs}` : "/api/users/");
   },
 
   createUser: async (payload: CreateUserPayload): Promise<CreateUserResponse> => {

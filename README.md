@@ -39,15 +39,18 @@ docker compose up --build
 Open **`http://localhost:8080`** in your browser.
 
 ### Seeded Demo Accounts (Evaluation Profile)
-The evaluation profile pre-seeds one demo user per role with password configured in `DEMO_PASSWORD` (default: `change-me-demo-password` or `DemoPass#2026`):
+The evaluation profile seeds these accounts. Their password is the value of `DEMO_PASSWORD` in `.env`:
 
 | Role | Email | Notes |
 |---|---|---|
-| **Resident** | `resident@example.test` | Room 101, Block A, Moroka Hall |
+| **Resident** | `resident@example.test` | Room A.203, Block A, Moroka Hall |
 | **Supervisor** | `supervisor@example.test` | Triage, assignment, close & reopen |
 | **Technician** | `technician@example.test` | Work orders queue & job execution |
-| **Warden** | `warden@example.test` | Read-only operational dashboard |
+| **Technician** | `technician2@example.test` | Second Technician, for reassignment |
+| **Warden** | `warden@example.test` | Read-only dashboard; reports faults for residents who cannot reach their accounts |
 | **Admin** | `admin@example.test` | User administration & audit search |
+
+Five failed sign-ins in one minute, for one account or from one IP address, block further attempts until the minute passes. Every browser reaching the Compose stack on one machine shares an IP address, so wait a minute after demonstrating the throttle.
 
 ---
 
@@ -64,6 +67,7 @@ docker compose -f docker-compose.dev.yml up -d
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python backend/manage.py migrate
+python backend/manage.py seed_data --with-demo
 python backend/manage.py runserver 127.0.0.1:8000
 ```
 
@@ -79,8 +83,15 @@ Open **`http://localhost:5173`** (Vite proxies `/api` directly to Django on port
 
 ## 5. Verification & Quality Gates
 
-- **API Health Check:** `GET http://localhost:8080/api/health/` (or `http://localhost:8000/api/health/`)
-- **OpenAPI 3.0 Schema:** `GET http://localhost:8080/api/schema/` (or `python backend/manage.py spectacular --file docs/openapi.yaml`)
+- **API Health Check:** `GET http://localhost:8080/api/health/`
+- **OpenAPI 3.0 Schema:** `GET http://localhost:8080/api/schema/` (regenerate with `python backend/manage.py spectacular --file docs/openapi.yaml`)
+- **Interactive API Docs:** `http://localhost:8080/api/schema/swagger-ui/` and `/api/schema/redoc/` (need internet access, because they load from a CDN)
 - **Frontend Types Generation:** `npm run generate-api-types --prefix frontend`
 - **Backend Linting:** `python -m ruff check backend`
 - **Frontend Linting & Build:** `npm run lint --prefix frontend` and `npm run build --prefix frontend`
+- **Backend Tests:** `pytest backend/tests/`, with PostgreSQL and the `DB_` variables from `.github/workflows/ci.yml`
+- **Client Tests:** `npm test --prefix frontend`
+- **Browser Journeys:** `npm run test:e2e --prefix frontend`, with the stack running (set `E2E_CHANNEL=msedge` or `chrome` for a real browser)
+- **Load Test:** see `loadtests/locustfile.py`. Use a throwaway database, because `seed_load_data` adds 5,000 requests.
+
+Diagrams are in `docs/diagrams/` as draw.io files with exported PNGs. Test run summaries and screenshots are in `docs/evidence/`.

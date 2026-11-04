@@ -12,6 +12,7 @@ import { AppError } from "../api/client";
 import { useAuth } from "../context/useAuth";
 import { StatusBadge } from "../components/StatusBadge";
 import { AppIcon } from "../components/AppIcon";
+import { LifecycleTrack } from "../components/LifecycleTrack";
 import type { Priority, RequestStatus, TransitionPayload } from "../types/workflow";
 
 type TriageMode =
@@ -76,9 +77,9 @@ export function RequestDetailPage() {
       setResidentResponse("");
       setActionError(null);
       if (updated.status === "VERIFIED_CLOSED") {
-        setActionSuccess(`Request ${updated.tracking_number} has been verified and permanently CLOSED (T10).`);
+        setActionSuccess(`Request ${updated.tracking_number} has been verified and permanently CLOSED.`);
       } else if (updated.status === "REOPENED") {
-        setActionSuccess(`Request ${updated.tracking_number} has been REOPENED with feedback (T11). Technician assignment retained.`);
+        setActionSuccess(`Request ${updated.tracking_number} has been REOPENED with feedback. Technician assignment retained.`);
       } else {
         setActionSuccess("Request status updated successfully.");
       }
@@ -147,7 +148,7 @@ export function RequestDetailPage() {
 
   const isSupervisor = user?.role === "SUPERVISOR";
   const isTechnician = user?.role === "TECHNICIAN";
-  const isResidentOwner = user?.role === "RESIDENT" && req.resident?.id === user.id;
+  const isOwner = req.is_owner;
   const isAssignedTech =
     isTechnician && req.active_work_order?.technician_id === user?.id;
 
@@ -239,7 +240,7 @@ export function RequestDetailPage() {
         return;
       }
       if (trimmed.length < 10) {
-        setActionError("Reassignment reason must be at least 10 characters long (BR-02).");
+        setActionError("Reassignment reason must be at least 10 characters long.");
         return;
       }
       const selectedTech = technicians.find((t) => t.id === Number(selectedTechId));
@@ -248,7 +249,7 @@ export function RequestDetailPage() {
         req.active_work_order &&
         selectedTech.id === req.active_work_order.technician_id
       ) {
-        setActionError("Cannot reassign to the same technician. Please select a different technician (BR-01).");
+        setActionError("Cannot reassign to the same technician. Please select a different technician.");
         return;
       }
       transitionMutation.mutate({
@@ -259,7 +260,7 @@ export function RequestDetailPage() {
       });
     } else if (triageMode === "COMPLETE_WORK") {
       if (trimmed.length < 20) {
-        setActionError("Work completion notes must be at least 20 characters long (BR-02).");
+        setActionError("Work completion notes must be at least 20 characters long.");
         return;
       }
       transitionMutation.mutate({
@@ -275,7 +276,7 @@ export function RequestDetailPage() {
       });
     } else if (triageMode === "REOPEN") {
       if (trimmed.length < 10) {
-        setActionError("Reopening feedback reason must be at least 10 characters long (BR-02).");
+        setActionError("Reopening feedback reason must be at least 10 characters long.");
         return;
       }
       transitionMutation.mutate({
@@ -364,6 +365,8 @@ export function RequestDetailPage() {
         </div>
 
         {/* Metadata Grid */}
+        <LifecycleTrack status={req.status} />
+
         <div className="detail-meta-grid">
           <div className="meta-item">
             <span className="meta-label">Fault Category</span>
@@ -393,7 +396,7 @@ export function RequestDetailPage() {
                   {req.resident.student_number && `(${req.resident.student_number})`}
                 </>
               ) : (
-                <span className="text-muted">Protected under BR-04 privacy</span>
+                <span className="text-muted">Hidden to protect resident privacy</span>
               )}
             </span>
           </div>
@@ -414,7 +417,7 @@ export function RequestDetailPage() {
             <div>
               <h2 className="work-order-title">Active Work Order Assignment</h2>
               <p className="work-order-subtitle">
-                Assigned to qualified technician for repair resolution (FR-10, Table 5.7)
+                The Technician currently responsible for this repair
               </p>
             </div>
           </div>
@@ -423,7 +426,8 @@ export function RequestDetailPage() {
             <div className="meta-item">
               <span className="meta-label">Assigned Technician</span>
               <span className="meta-value tech-highlight">
-                {req.active_work_order.technician_name} ({req.active_work_order.technician_email})
+                {req.active_work_order.technician_name}
+                {req.active_work_order.technician_email && ` (${req.active_work_order.technician_email})`}
               </span>
             </div>
 
@@ -460,7 +464,8 @@ export function RequestDetailPage() {
               .map((wo) => (
                 <div key={wo.id} className="prior-order-item">
                   <div>
-                    <strong>{wo.technician_name}</strong> ({wo.technician_email})
+                    <strong>{wo.technician_name}</strong>
+                    {wo.technician_email && ` (${wo.technician_email})`}
                   </div>
                   <div className="prior-order-meta">
                     <span className="end-reason-tag">Status: {wo.end_reason}</span>
@@ -483,14 +488,14 @@ export function RequestDetailPage() {
       )}
 
       {/* FR-07: Interactive Clarification Box for Resident Owner */}
-      {req.status === "NEEDS_CLARIFICATION" && isResidentOwner && (
+      {req.status === "NEEDS_CLARIFICATION" && isOwner && (
         <div className="card clarification-card">
           <div className="clarification-header">
             <span className="clarification-icon"><AppIcon name="info" size={24} color="#d97706" /></span>
             <div>
               <h2 className="clarification-title">Supervisor Clarification Needed</h2>
               <p className="clarification-subtitle">
-                The maintenance supervisor requested additional information before dispatching this repair (FR-07).
+                The maintenance supervisor requested additional information before dispatching this repair.
               </p>
             </div>
           </div>
@@ -547,7 +552,7 @@ export function RequestDetailPage() {
       )}
 
       {/* Clarification Alert if status is NEEDS_CLARIFICATION and viewer is NOT the owner */}
-      {req.status === "NEEDS_CLARIFICATION" && !isResidentOwner && (
+      {req.status === "NEEDS_CLARIFICATION" && !isOwner && (
         <div className="alert alert-warning mb-3">
           <span className="alert-icon"><AppIcon name="info" size={16} /></span>
           <div>
@@ -568,17 +573,17 @@ export function RequestDetailPage() {
               <div>
                 <h2 className="section-title">
                   {req.status === "SUBMITTED"
-                    ? "Supervisor Triage Actions (FR-09)"
+                    ? "Supervisor Triage Actions"
                     : req.status === "APPROVED"
-                    ? "Supervisor Dispatch Actions (FR-10, SCR-07)"
-                    : "Supervisor Reassignment Controls (FR-11, SCR-07)"}
+                    ? "Supervisor Dispatch Actions"
+                    : "Supervisor Reassignment Controls"}
                 </h2>
                 <p className="section-subtitle">
                   {req.status === "SUBMITTED"
                     ? "Evaluate this fault report, assign priority for technician dispatch, request clarification, or reject."
                     : req.status === "APPROVED"
-                    ? "Assign this approved fault to a qualified active technician (FR-10)."
-                    : "Reassign this active work order to another technician with mandatory reason (FR-11)."}
+                    ? "Assign this approved fault to a qualified active technician."
+                    : "Reassign this active work order to another technician with mandatory reason."}
                 </p>
               </div>
               {req.status === "APPROVED" && (
@@ -602,21 +607,21 @@ export function RequestDetailPage() {
                     className={`btn ${triageMode === "APPROVE" ? "btn-primary" : "btn-outline-primary"}`}
                     onClick={() => setTriageMode(triageMode === "APPROVE" ? "NONE" : "APPROVE")}
                   >
-                    Approve Fault (T4)
+                    Approve Fault
                   </button>
                   <button
                     type="button"
                     className={`btn ${triageMode === "CLARIFY" ? "btn-warning" : "btn-outline-warning"}`}
                     onClick={() => setTriageMode(triageMode === "CLARIFY" ? "NONE" : "CLARIFY")}
                   >
-                    Request Clarification (T2)
+                    Request Clarification
                   </button>
                   <button
                     type="button"
                     className={`btn ${triageMode === "REJECT" ? "btn-danger" : "btn-outline-danger"}`}
                     onClick={() => setTriageMode(triageMode === "REJECT" ? "NONE" : "REJECT")}
                   >
-                    Reject Request (T5)
+                    Reject Request
                   </button>
                 </>
               )}
@@ -640,14 +645,14 @@ export function RequestDetailPage() {
                         : "Assign to active technician"
                     }
                   >
-                    Assign Technician (T6)
+                    Assign Technician
                   </button>
                   <button
                     type="button"
                     className={`btn ${triageMode === "REJECT" ? "btn-danger" : "btn-outline-danger"}`}
                     onClick={() => setTriageMode(triageMode === "REJECT" ? "NONE" : "REJECT")}
                   >
-                    Reject Request (T5)
+                    Reject Request
                   </button>
                 </>
               )}
@@ -673,7 +678,7 @@ export function RequestDetailPage() {
                       : "Reassign work order to another technician"
                   }
                 >
-                  Reassign Technician (T7)
+                  Reassign Technician
                 </button>
               )}
             </div>
@@ -684,9 +689,9 @@ export function RequestDetailPage() {
                 <form onSubmit={handleTriageExecute} className="triage-form">
                   {triageMode === "APPROVE" && (
                     <div className="drawer-section">
-                      <h3 className="drawer-title">Approve Maintenance Request (T4)</h3>
+                      <h3 className="drawer-title">Approve Maintenance Request</h3>
                       <p className="drawer-desc">
-                        Assigning a priority is mandatory (BR-08). Once approved, this request can be dispatched to an active technician.
+                        Assigning a priority is mandatory. Once approved, this request can be dispatched to an active technician.
                       </p>
 
                       <div className="form-group">
@@ -742,9 +747,9 @@ export function RequestDetailPage() {
 
                   {triageMode === "ASSIGN" && (
                     <div className="drawer-section">
-                      <h3 className="drawer-title">Assign Technician (T6)</h3>
+                      <h3 className="drawer-title">Assign Technician</h3>
                       <p className="drawer-desc">
-                        Select an active technician to dispatch this maintenance fault (FR-10, Table 5.7).
+                        Choose the Technician who will do this repair.
                       </p>
 
                       <div className="form-group">
@@ -800,7 +805,7 @@ export function RequestDetailPage() {
                           className="btn btn-primary"
                           disabled={transitionMutation.isPending || !selectedTechId}
                         >
-                          {transitionMutation.isPending ? "Assigning..." : "Confirm Assignment (T6)"}
+                          {transitionMutation.isPending ? "Assigning..." : "Confirm Assignment"}
                         </button>
                       </div>
                     </div>
@@ -808,9 +813,9 @@ export function RequestDetailPage() {
 
                   {triageMode === "REASSIGN" && (
                     <div className="drawer-section">
-                      <h3 className="drawer-title">Reassign Technician (T7)</h3>
+                      <h3 className="drawer-title">Reassign Technician</h3>
                       <p className="drawer-desc">
-                        Reassign this active repair to a different technician (FR-11). The previous work order will be closed with reason <span className="highlight-status">REASSIGNED</span>.
+                        Reassign this active repair to a different technician. The previous work order will be closed with reason <span className="highlight-status">REASSIGNED</span>.
                       </p>
 
                       <div className="form-group">
@@ -881,7 +886,7 @@ export function RequestDetailPage() {
                             actionNote.trim().length < 10
                           }
                         >
-                          {transitionMutation.isPending ? "Reassigning..." : "Confirm Reassignment (T7)"}
+                          {transitionMutation.isPending ? "Reassigning..." : "Confirm Reassignment"}
                         </button>
                       </div>
                     </div>
@@ -889,7 +894,7 @@ export function RequestDetailPage() {
 
                   {triageMode === "CLARIFY" && (
                     <div className="drawer-section">
-                      <h3 className="drawer-title">Request Clarification from Resident (T2)</h3>
+                      <h3 className="drawer-title">Request Clarification from Resident</h3>
                       <p className="drawer-desc">
                         Moves request to <span className="highlight-status">NEEDS_CLARIFICATION</span>. The resident will be prompted to answer before the request can proceed.
                       </p>
@@ -939,9 +944,9 @@ export function RequestDetailPage() {
 
                   {triageMode === "REJECT" && (
                     <div className="drawer-section">
-                      <h3 className="drawer-title">Reject Maintenance Request (T5)</h3>
+                      <h3 className="drawer-title">Reject Maintenance Request</h3>
                       <p className="drawer-desc text-danger">
-                        Rejection is final and terminal (BR-06). A mandatory explanation of at least 10 characters is required for audit recording.
+                        Rejection is final and terminal. A mandatory explanation of at least 10 characters is required for audit recording.
                       </p>
 
                       <div className="form-group">
@@ -997,9 +1002,9 @@ export function RequestDetailPage() {
         <div className="card triage-control-card verification-control-card">
           <div className="triage-control-header">
             <div>
-              <h2 className="section-title">Supervisor Quality Verification Review (FR-12, SCR-08)</h2>
+              <h2 className="section-title">Supervisor Quality Verification Review</h2>
               <p className="section-subtitle">
-                Review completed technician repairs on site. Confirm and close request (T10) or return to technician with feedback (T11).
+                Review completed technician repairs on site. Confirm and close request or return to technician with feedback.
               </p>
             </div>
             <span className="status-note status-awaiting-verify-note">
@@ -1037,7 +1042,7 @@ export function RequestDetailPage() {
                 setTriageMode(triageMode === "VERIFY_CLOSE" ? "NONE" : "VERIFY_CLOSE");
               }}
             >
-              Verify & Close Request (T10)
+              Verify & Close Request
             </button>
             <button
               type="button"
@@ -1049,7 +1054,7 @@ export function RequestDetailPage() {
                 setTriageMode(triageMode === "REOPEN" ? "NONE" : "REOPEN");
               }}
             >
-              Reopen with Feedback (T11)
+              Reopen with Feedback
             </button>
           </div>
 
@@ -1058,9 +1063,9 @@ export function RequestDetailPage() {
             <div className="triage-drawer">
               <form onSubmit={handleTriageExecute} className="triage-form">
                 <div className="drawer-section">
-                  <h3 className="drawer-title">Confirm & Close Maintenance Request (T10)</h3>
+                  <h3 className="drawer-title">Confirm & Close Maintenance Request</h3>
                   <p className="drawer-desc">
-                    Closing this request is permanent and terminal (BR-06). The active work order will end as <strong>COMPLETED</strong>, and the completion timestamp will be recorded.
+                    Closing this request is permanent and terminal. The active work order will end as <strong>COMPLETED</strong>, and the completion timestamp will be recorded.
                   </p>
 
                   <div className="form-group">
@@ -1090,7 +1095,7 @@ export function RequestDetailPage() {
                       className="btn btn-success"
                       disabled={transitionMutation.isPending}
                     >
-                      {transitionMutation.isPending ? "Closing..." : "Confirm & Close Request (T10)"}
+                      {transitionMutation.isPending ? "Closing..." : "Confirm & Close Request"}
                     </button>
                   </div>
                 </div>
@@ -1103,9 +1108,9 @@ export function RequestDetailPage() {
             <div className="triage-drawer">
               <form onSubmit={handleTriageExecute} className="triage-form">
                 <div className="drawer-section">
-                  <h3 className="drawer-title">Reopen Maintenance Request with Feedback (T11)</h3>
+                  <h3 className="drawer-title">Reopen Maintenance Request with Feedback</h3>
                   <p className="drawer-desc text-warning">
-                    Reopening requires mandatory feedback of at least 10 characters explaining what needs correction (BR-02). The request will return to <strong>REOPENED</strong> while retaining the assigned technician.
+                    Reopening requires mandatory feedback of at least 10 characters explaining what needs correction. The request will return to <strong>REOPENED</strong> while retaining the assigned technician.
                   </p>
 
                   <div className="form-group">
@@ -1148,7 +1153,7 @@ export function RequestDetailPage() {
                       className="btn btn-warning"
                       disabled={transitionMutation.isPending || actionNote.trim().length < 10}
                     >
-                      {transitionMutation.isPending ? "Reopening..." : "Reopen Request (T11)"}
+                      {transitionMutation.isPending ? "Reopening..." : "Reopen Request"}
                     </button>
                   </div>
                 </div>
@@ -1163,11 +1168,11 @@ export function RequestDetailPage() {
         <div className="card triage-control-card technician-control-card">
           <div className="triage-control-header">
             <div>
-              <h2 className="section-title">Technician Repair Actions (FR-14, FR-15)</h2>
+              <h2 className="section-title">Technician Repair Actions</h2>
               <p className="section-subtitle">
                 {["ASSIGNED", "REOPENED"].includes(req.status)
-                  ? "Start repair work to update the request status to IN PROGRESS (FR-14)."
-                  : "Submit mandatory repair completion notes for supervisor verification review (FR-15)."}
+                  ? "Start repair work to update the request status to IN PROGRESS."
+                  : "Submit mandatory repair completion notes for supervisor verification review."}
               </p>
             </div>
             {req.status === "IN_PROGRESS" && (
@@ -1185,7 +1190,7 @@ export function RequestDetailPage() {
                 onClick={handleStartWork}
                 disabled={transitionMutation.isPending}
               >
-                {transitionMutation.isPending ? "Starting Work..." : "Start Work (T8)"}
+                {transitionMutation.isPending ? "Starting Work..." : "Start Work"}
               </button>
             )}
 
@@ -1200,7 +1205,7 @@ export function RequestDetailPage() {
                   setTriageMode(triageMode === "COMPLETE_WORK" ? "NONE" : "COMPLETE_WORK");
                 }}
               >
-                Complete Work (T9)
+                Complete Work
               </button>
             )}
           </div>
@@ -1210,9 +1215,9 @@ export function RequestDetailPage() {
             <div className="triage-drawer">
               <form onSubmit={handleTriageExecute} className="triage-form">
                 <div className="drawer-section">
-                  <h3 className="drawer-title">Submit Repair Completion (T9)</h3>
+                  <h3 className="drawer-title">Submit Repair Completion</h3>
                   <p className="drawer-desc">
-                    Detailed notes of at least 20 characters are required for supervisor verification review (BR-02).
+                    Detailed notes of at least 20 characters are required for supervisor verification review.
                   </p>
 
                   <div className="form-group">
@@ -1252,7 +1257,7 @@ export function RequestDetailPage() {
                       className="btn btn-success"
                       disabled={transitionMutation.isPending || actionNote.trim().length < 20}
                     >
-                      {transitionMutation.isPending ? "Submitting..." : "Confirm Work Completed (T9)"}
+                      {transitionMutation.isPending ? "Submitting..." : "Confirm Work Completed"}
                     </button>
                   </div>
                 </div>
@@ -1266,7 +1271,7 @@ export function RequestDetailPage() {
       <div className="card timeline-card">
         <h2 className="timeline-title">Request Lifecycle & Audit Timeline</h2>
         <p className="timeline-subtitle">
-          Append-only chronological record of all lifecycle transitions and actors (FR-18).
+          Append-only chronological record of all lifecycle transitions and actors.
         </p>
 
         {req.timeline.length === 0 ? (

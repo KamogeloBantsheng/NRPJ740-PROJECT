@@ -4,14 +4,20 @@ Configured for PostgreSQL 16, server-side sessions, and strict security headers.
 
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 from .env import get_env
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Security settings
-SECRET_KEY = get_env("DJANGO_SECRET_KEY", "insecure-dev-key-change-in-production")
-DEBUG = get_env("DJANGO_DEBUG", "true", cast=bool)
+INSECURE_DEV_SECRET_KEY = "insecure-dev-key-change-in-production"
+SECRET_KEY = get_env("DJANGO_SECRET_KEY", INSECURE_DEV_SECRET_KEY)
+DEBUG = get_env("DJANGO_DEBUG", "false", cast=bool)  # Debug output is opt-in (Section 5.7)
+
+if not DEBUG and SECRET_KEY == INSECURE_DEV_SECRET_KEY:
+    raise ImproperlyConfigured("Set DJANGO_SECRET_KEY, or DJANGO_DEBUG=true for local development.")
 
 ALLOWED_HOSTS = [h.strip() for h in get_env("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
 if "testserver" not in ALLOWED_HOSTS:
@@ -45,6 +51,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "config.middleware.ForcePasswordChangeMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -82,6 +89,10 @@ DATABASES = {
         "PASSWORD": DB_PASSWORD,
         "HOST": get_env("DB_HOST", "127.0.0.1"),
         "PORT": get_env("DB_PORT", "5432"),
+        "OPTIONS": {
+            # Section 5.7: stops one runaway query holding a connection. 0 turns it off for migrations.
+            "options": f"-c statement_timeout={get_env('DB_STATEMENT_TIMEOUT_MS', 30000, cast=int)}",
+        },
     }
 }
 
@@ -116,15 +127,16 @@ CSRF_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:8080",
-    "http://127.0.0.1:8080",
-    "https://localhost:8080",
-    "https://127.0.0.1:8080",
-    "https://localhost",
-    "https://127.0.0.1",
+    origin.strip()
+    for origin in get_env(
+        "CSRF_TRUSTED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080",
+    ).split(",")
+    if origin.strip()
 ]
+
+# Reverse proxies in front of Django that append to X-Forwarded-For. 0 means ignore that header.
+TRUSTED_PROXY_COUNT = get_env("TRUSTED_PROXY_COUNT", 0, cast=int)
 
 # Django REST Framework configuration
 REST_FRAMEWORK = {
@@ -146,6 +158,9 @@ SPECTACULAR_SETTINGS = {
     ),
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # Pinned: the "latest" ReDoc bundle fails to load, and a CDN update must not change the docs
+    "SWAGGER_UI_DIST": "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14",
+    "REDOC_DIST": "https://cdn.jsdelivr.net/npm/redoc@2.1.5",
     "COMPONENT_SPLIT_REQUEST": True,
 }
 

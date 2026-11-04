@@ -3,7 +3,8 @@
 import uuid
 
 from config.exceptions import ForbiddenException, NotFoundException, ValidationException
-from django.db.models import Case, Count, IntegerField, Q, Value, When
+from config.pagination import paged_response_schema, paginate, parse_int
+from django.db.models import Case, Count, IntegerField, OuterRef, Q, QuerySet, Subquery, Value, When
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
@@ -12,9 +13,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import Role, User
+from apps.accounts.permissions import IsSupervisor, IsTechnician
 from apps.audit.services import AuditService
 from apps.locations.models import FaultCategory, Location
-from apps.workflow.models import MaintenanceRequest, Priority
+from apps.workflow.models import MaintenanceRequest, Priority, RequestStatus, WorkOrder
 from apps.workflow.permissions import PermissionPolicy
 from apps.workflow.serializers import (
     MaintenanceRequestDetailSerializer,
@@ -27,6 +29,65 @@ from apps.workflow.serializers import (
 from apps.workflow.services import ReportingService, TransitionService
 
 
+def request_page_schema(name: str):
+    """OpenAPI description of a page of requests with its per-status totals."""
+    return paged_response_schema(
+        name,
+        MaintenanceRequestListSerializer,
+        status_totals=serializers.DictField(child=serializers.IntegerField()),
+    )
+
+
+def apply_request_filters(request: Request, queryset: QuerySet) -> QuerySet:
+    """Filters shared by the request lists. Bad values are ignored, never a server error (ST-01)."""
+    params = request.query_params
+
+    if params.get("mine", "").lower() in ("true", "1"):
+        queryset = queryset.filter(resident=request.user)
+
+    for parameter, field in (
+        ("category_id", "category_id"),
+        ("location_id", "location_id"),
+        ("residence_id", "location__residence_id"),
+    ):
+        value = parse_int(params.get(parameter))
+        if value is not None:
+            queryset = queryset.filter(**{field: value})
+
+    search = params.get("search", "").strip()
+    if search:
+        matches = Q(description__icontains=search) | Q(location__label__icontains=search)
+        tracking_digits = search.upper().removeprefix("MR-")
+        if tracking_digits.isdecimal():
+            matches |= Q(id=int(tracking_digits))
+        # Only roles allowed to see resident identity may search by it (BR-04)
+        if request.user.role == Role.SUPERVISOR:
+            matches |= Q(resident__full_name__icontains=search)
+        queryset = queryset.filter(matches)
+
+    return queryset
+
+
+def status_filter(request: Request) -> list[str]:
+    return [item.strip() for item in request.query_params.get("status", "").split(",") if item.strip()]
+
+
+def status_totals(queryset: QuerySet) -> dict[str, int]:
+    """Totals per status across every page, for the counters above a list."""
+    return dict(queryset.order_by().values_list("status").annotate(total=Count("id")))
+
+
+def paged_requests(request: Request, queryset: QuerySet, statuses: list[str]) -> Response:
+    """Serialize one page of requests with the totals the list screens display."""
+    totals = status_totals(queryset)
+    if statuses:
+        queryset = queryset.filter(status__in=statuses)
+
+    page, meta = paginate(request, queryset)
+    serializer = MaintenanceRequestListSerializer(page, many=True, context={"request": request})
+    return Response({**meta, "status_totals": totals, "results": serializer.data})
+
+
 class RequestListCreateView(APIView):
     """List role-scoped requests or submit a new maintenance request (FR-05, FR-06)."""
 
@@ -36,35 +97,12 @@ class RequestListCreateView(APIView):
         operation_id="api_requests_list",
         summary="List maintenance requests",
         description="Return role-scoped requests for the authenticated user (SCR-03, BR-05).",
-        responses={200: MaintenanceRequestListSerializer(many=True)},
+        responses={200: request_page_schema("PagedRequests")},
     )
     def get(self, request: Request) -> Response:
         """Return role-scoped requests for the authenticated user (SCR-03, BR-05)."""
-        qs = PermissionPolicy.scope_requests(request.user)
-
-        # Optional filters
-        req_status = request.query_params.get("status")
-        if req_status:
-            statuses = [s.strip() for s in req_status.split(",") if s.strip()]
-            if len(statuses) == 1:
-                qs = qs.filter(status=statuses[0])
-            elif len(statuses) > 1:
-                qs = qs.filter(status__in=statuses)
-
-        category_id = request.query_params.get("category_id")
-        if category_id:
-            qs = qs.filter(category_id=category_id)
-
-        location_id = request.query_params.get("location_id")
-        if location_id:
-            qs = qs.filter(location_id=location_id)
-
-        serializer = MaintenanceRequestListSerializer(
-            qs,
-            many=True,
-            context={"request": request},
-        )
-        return Response(serializer.data)
+        queryset = apply_request_filters(request, PermissionPolicy.scope_requests(request.user))
+        return paged_requests(request, queryset, status_filter(request))
 
     @extend_schema(
         operation_id="api_requests_create",
@@ -110,7 +148,7 @@ class RequestListCreateView(APIView):
             client_token=client_token,
         )
 
-        resp_serializer = MaintenanceRequestDetailSerializer(req)
+        resp_serializer = MaintenanceRequestDetailSerializer(req, context={"request": request})
         status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(resp_serializer.data, status=status_code)
 
@@ -220,10 +258,33 @@ class RequestTransitionView(APIView):
         return Response(resp_serializer.data, status=status.HTTP_200_OK)
 
 
+class TriageQueueView(APIView):
+    """Requests waiting for a triage decision, oldest first (FR-08, SCR-06)."""
+
+    permission_classes = (IsAuthenticated, IsSupervisor)
+
+    @extend_schema(
+        operation_id="api_triage_queue_list",
+        summary="List the triage queue",
+        description=(
+            "Submitted requests, oldest first, at most 50 per page, filterable by residence and "
+            "category (FR-08, SCR-06). Pass status to include other states."
+        ),
+        responses={200: request_page_schema("PagedTriageQueue")},
+    )
+    def get(self, request: Request) -> Response:
+        queryset = apply_request_filters(request, PermissionPolicy.scope_requests(request.user))
+        return paged_requests(
+            request,
+            queryset.order_by("created_at", "id"),
+            status_filter(request) or [RequestStatus.SUBMITTED],
+        )
+
+
 class TechnicianListView(APIView):
     """List active technicians with workload counts for supervisor dispatch (SCR-07, FR-10, FR-11)."""
 
-    permission_classes = (IsAuthenticated,)
+    permission_classes = (IsAuthenticated, IsSupervisor)
 
     @extend_schema(
         operation_id="api_technicians_list",
@@ -232,9 +293,6 @@ class TechnicianListView(APIView):
         responses={200: TechnicianItemSerializer(many=True)},
     )
     def get(self, request: Request) -> Response:
-        if request.user.role not in (Role.SUPERVISOR, Role.ADMIN):
-            raise ForbiddenException("Only supervisors and admins can view technician dispatch availability.")
-
         technicians = (
             User.objects.filter(role=Role.TECHNICIAN, is_active=True)
             .annotate(
@@ -252,39 +310,24 @@ class TechnicianListView(APIView):
 class TechnicianWorkQueueView(APIView):
     """List requests currently assigned to the authenticated technician (FR-13, SCR-09, BR-04)."""
 
-    permission_classes = (IsAuthenticated,)
+    permission_classes = (IsAuthenticated, IsTechnician)
+
+    # Finished work leaves the queue until a Supervisor reopens it (AC-15.1)
+    ACTIVE_STATUSES = (RequestStatus.ASSIGNED, RequestStatus.IN_PROGRESS, RequestStatus.REOPENED)
 
     @extend_schema(
         operation_id="api_work_queue_list",
         summary="List assigned technician work orders",
-        description="List requests currently assigned to the authenticated technician (FR-13, SCR-09, BR-04).",
-        responses={200: MaintenanceRequestListSerializer(many=True)},
+        description=(
+            "Active work assigned to the authenticated technician, by priority and then assignment "
+            "time (FR-13, SCR-09, BR-04). Pass status=WORK_COMPLETED to see work awaiting verification."
+        ),
+        responses={200: request_page_schema("PagedWorkQueue")},
     )
     def get(self, request: Request) -> Response:
-        if request.user.role != Role.TECHNICIAN:
-            raise ForbiddenException("Only technicians can view their assigned work queue.")
+        queryset = apply_request_filters(request, PermissionPolicy.scope_requests(request.user))
 
-        qs = PermissionPolicy.scope_requests(request.user)
-
-        # Optional status filtering (e.g. ASSIGNED, IN_PROGRESS, REOPENED)
-        req_status = request.query_params.get("status")
-        if req_status:
-            statuses = [s.strip() for s in req_status.split(",") if s.strip()]
-            if len(statuses) == 1:
-                qs = qs.filter(status=statuses[0])
-            elif len(statuses) > 1:
-                qs = qs.filter(status__in=statuses)
-
-        category_id = request.query_params.get("category_id")
-        if category_id:
-            qs = qs.filter(category_id=category_id)
-
-        location_id = request.query_params.get("location_id")
-        if location_id:
-            qs = qs.filter(location_id=location_id)
-
-        # Priority ordering: CRITICAL > HIGH > MEDIUM > LOW, then oldest report first
-        priority_order = Case(
+        priority_rank = Case(
             When(priority=Priority.CRITICAL, then=Value(1)),
             When(priority=Priority.HIGH, then=Value(2)),
             When(priority=Priority.MEDIUM, then=Value(3)),
@@ -292,22 +335,20 @@ class TechnicianWorkQueueView(APIView):
             default=Value(5),
             output_field=IntegerField(),
         )
-        qs = qs.annotate(_priority_rank=priority_order).order_by("_priority_rank", "created_at")
-
-        serializer = MaintenanceRequestListSerializer(
-            qs,
-            many=True,
-            context={"request": request},
+        assigned_at = WorkOrder.objects.filter(request=OuterRef("pk"), ended_at__isnull=True).values("assigned_at")[:1]
+        queryset = queryset.annotate(_priority_rank=priority_rank, _assigned_at=Subquery(assigned_at)).order_by(
+            "_priority_rank", "_assigned_at"
         )
-        return Response(serializer.data)
+
+        return paged_requests(request, queryset, status_filter(request) or list(self.ACTIVE_STATUSES))
 
 
 class DashboardView(APIView):
     """Operational dashboard providing role-scoped maintenance aggregates (FR-16, SCR-10, BR-04, NFR-06).
 
     - Warden: strictly scoped to own residence, no resident personal data (TC-36).
-    - Supervisor & Admin: all residences or filtered by residence_id (TC-37).
-    - Resident & Technician: forbidden (HTTP 403).
+    - Supervisor: all residences or filtered by residence_id (TC-37).
+    - Every other role: forbidden (HTTP 403).
     - Read-only: mutation attempts return HTTP 403 (TC-36).
     """
 
@@ -316,30 +357,25 @@ class DashboardView(APIView):
     @extend_schema(
         operation_id="api_dashboard_metrics",
         summary="Operational dashboard metrics",
-        description="Role-scoped maintenance aggregates for Supervisor, Warden, and Admin (FR-16, SCR-10).",
+        description="Role-scoped maintenance aggregates for Supervisor and Warden (FR-16, SCR-10).",
         responses={
             200: inline_serializer(
                 name="DashboardMetricsResponse",
                 fields={
-                    "status_distribution": serializers.DictField(child=serializers.IntegerField()),
-                    "priority_distribution": serializers.DictField(child=serializers.IntegerField()),
+                    "scope": serializers.DictField(),
+                    "summary": serializers.DictField(),
+                    "status_counts": serializers.DictField(child=serializers.IntegerField()),
+                    "priority_counts": serializers.DictField(child=serializers.IntegerField()),
                     "category_counts": serializers.ListField(child=serializers.DictField()),
-                    "aging_brackets": serializers.DictField(child=serializers.IntegerField()),
-                    "mean_time_to_close_hours": serializers.FloatField(allow_null=True),
-                    "closed_tickets_sample_size": serializers.IntegerField(),
-                    "active_work_orders_count": serializers.IntegerField(),
-                    "scoped_residence": serializers.CharField(allow_null=True),
+                    "aging_distribution": serializers.DictField(child=serializers.IntegerField()),
                 },
             )
         },
     )
     def get(self, request: Request) -> Response:
-        residence_id = request.query_params.get("residence_id")
-        parsed_res_id = int(residence_id) if residence_id and residence_id.isdigit() else None
-
         metrics = ReportingService.get_dashboard_metrics(
             user=request.user,
-            residence_id=parsed_res_id,
+            residence_id=parse_int(request.query_params.get("residence_id")),
         )
         return Response(metrics, status=status.HTTP_200_OK)
 

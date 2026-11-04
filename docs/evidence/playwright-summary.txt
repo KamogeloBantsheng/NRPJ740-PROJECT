@@ -1,0 +1,8 @@
+Running 6 tests using 1 worker
+[1/6] e2e\journeys.spec.ts:24:1 › TC-42: report, approve, assign, complete and verify in the browser
+[2/6] e2e\journeys.spec.ts:63:1 › TC-19: clarification loop, ask, answer, approve
+[3/6] e2e\journeys.spec.ts:90:1 › ST-02: script markup in a description stays inert text
+[4/6] e2e\journeys.spec.ts:108:1 › AC-05.4: the report form always shows the emergency notice
+[5/6] e2e\journeys.spec.ts:114:1 › Section 6.2: an ended session returns to sign-in with a notice
+[6/6] e2e\journeys.spec.ts:126:1 › NT-05: Resident and Technician screens fit a 360 px phone
+  6 passed (12.4s)

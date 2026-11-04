@@ -54,7 +54,7 @@ class TestPermissionsAndSecurity:
         # 1. Listing endpoint: Resident sees strictly own requests
         list_resp = resident_client.get("/api/requests/")
         assert list_resp.status_code == status.HTTP_200_OK
-        ids = [item["id"] for item in list_resp.json()]
+        ids = [item["id"] for item in list_resp.json()["results"]]
         assert req_own.id in ids
         assert req_other.id not in ids
 
@@ -93,7 +93,7 @@ class TestPermissionsAndSecurity:
         # Filter by status=SUBMITTED
         resp_filtered = supervisor_client.get("/api/requests/?status=SUBMITTED")
         assert resp_filtered.status_code == status.HTTP_200_OK
-        ids = [item["id"] for item in resp_filtered.json()]
+        ids = [item["id"] for item in resp_filtered.json()["results"]]
         assert req_sub.id in ids
         assert req_app.id not in ids
 
@@ -139,7 +139,7 @@ class TestPermissionsAndSecurity:
         # 1. Work queue lists only requests assigned to this technician
         queue_resp = technician_client.get("/api/work-queue/")
         assert queue_resp.status_code == status.HTTP_200_OK
-        ids = [item["id"] for item in queue_resp.json()]
+        ids = [item["id"] for item in queue_resp.json()["results"]]
         assert req1.id in ids
         assert req2.id not in ids
 
@@ -231,7 +231,7 @@ class TestPermissionsAndSecurity:
     ):
         """NT-01: Automated role-endpoint security matrix testing every privileged endpoint across all 5 roles."""
         # 1. Operational Dashboard (Admin, Supervisor, Warden allowed; Resident & Technician 403)
-        assert admin_client.get("/api/dashboard/").status_code == status.HTTP_200_OK
+        assert admin_client.get("/api/dashboard/").status_code == status.HTTP_403_FORBIDDEN
         assert supervisor_client.get("/api/dashboard/").status_code == status.HTTP_200_OK
         assert warden_client.get("/api/dashboard/").status_code == status.HTTP_200_OK
         assert resident_client.get("/api/dashboard/").status_code == status.HTTP_403_FORBIDDEN

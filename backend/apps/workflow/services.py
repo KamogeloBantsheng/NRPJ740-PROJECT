@@ -3,8 +3,8 @@ from datetime import timedelta
 from typing import Any
 
 from config.exceptions import ConflictException, ForbiddenException, NotFoundException, ValidationException
-from django.db import transaction
-from django.db.models import Count
+from django.db import IntegrityError, transaction
+from django.db.models import Avg, Count, DateTimeField, DurationField, ExpressionWrapper, F, Q, Value
 from django.utils import timezone
 
 from apps.accounts.models import Role, User
@@ -106,35 +106,65 @@ class TransitionService:
             client_token = uuid.uuid4()
 
         # 5. Atomic persistence and audit recording
-        with transaction.atomic():
-            req = MaintenanceRequest.objects.create(
-                resident=resident,
-                location=location,
-                category=category,
-                description=trimmed_desc,
-                status=RequestStatus.SUBMITTED,
-                priority=None,
-                client_token=client_token,
-                closed_at=None,
-            )
+        try:
+            with transaction.atomic():
+                req = MaintenanceRequest.objects.create(
+                    resident=resident,
+                    location=location,
+                    category=category,
+                    description=trimmed_desc,
+                    status=RequestStatus.SUBMITTED,
+                    priority=None,
+                    client_token=client_token,
+                    closed_at=None,
+                )
 
-            AuditService.record(
-                action=AuditAction.REQUEST_SUBMITTED,
-                actor=resident,
-                request_id=req.id,
-                from_status=None,
-                to_status=RequestStatus.SUBMITTED,
-                details={
-                    "tracking_number": req.tracking_number,
-                    "location_id": location.id,
-                    "location_label": location.label,
-                    "location_kind": location.kind,
-                    "category_id": category.id,
-                    "category_name": category.name,
-                },
-            )
+                AuditService.record(
+                    action=AuditAction.REQUEST_SUBMITTED,
+                    actor=resident,
+                    request_id=req.id,
+                    from_status=None,
+                    to_status=RequestStatus.SUBMITTED,
+                    details={
+                        "tracking_number": req.tracking_number,
+                        "location_id": location.id,
+                        "location_label": location.label,
+                        "location_kind": location.kind,
+                        "category_id": category.id,
+                        "category_name": category.name,
+                    },
+                )
+        except IntegrityError:
+            # Two simultaneous submits with one token: the unique constraint let one through (AC-05.3)
+            existing = MaintenanceRequest.objects.filter(resident=resident, client_token=client_token).first()
+            if existing is None:
+                raise
+            return existing, False
 
-            return req, True
+        return req, True
+
+    @staticmethod
+    def _authorize(*, req: MaintenanceRequest, action: str, actor: User) -> None:
+        """Decide whether the actor's role may perform the action at all (NFR-01).
+
+        This runs before any state check: a role that may never do something gets 403
+        whatever state the request happens to be in, not a 409 that reveals the state.
+        """
+        rule = TransitionRule.objects.filter(action=action).first()
+        if rule is None:
+            return  # Unknown actions fall through to the 409 refusal below
+
+        if rule.actor_role == Role.RESIDENT:
+            # "Owner" in Table 5.1: the person who reported the fault, which may be a Warden
+            # reporting on behalf of a Resident.
+            if req.resident_id != actor.id:
+                raise ForbiddenException("Only the person who submitted the request may perform this action.")
+            return
+
+        if rule.actor_role != actor.role:
+            raise ForbiddenException(
+                f"Role '{actor.role}' is not permitted to perform '{action}'. Required: '{rule.actor_role}'."
+            )
 
     @classmethod
     def execute(
@@ -148,8 +178,9 @@ class TransitionService:
     ) -> MaintenanceRequest:
         """Execute a state transition under a row lock (SELECT FOR UPDATE).
 
-        Checks expected_status (409 on mismatch), matches against TransitionRule table,
-        verifies actor role, updates state and timestamps, and creates append-only audit event.
+        Verifies the actor may perform the action (403), checks expected_status (409 on mismatch),
+        matches against the TransitionRule table, updates state and timestamps, and creates the
+        append-only audit event.
         """
         payload = payload or {}
 
@@ -163,14 +194,17 @@ class TransitionService:
             if not req:
                 raise NotFoundException(f"Maintenance request {request_id} not found.")
 
-            # 2. Concurrency check (409 if status differs from expected)
+            # 2. Role and ownership (403), before anything about state is revealed
+            cls._authorize(req=req, action=action, actor=actor)
+
+            # 3. Concurrency check (409 if status differs from expected)
             if expected_status and req.status != expected_status:
                 raise ConflictException(
                     f"Request status has changed from '{expected_status}' to '{req.status}'.",
                     current_status=req.status,
                 )
 
-            # 3. Match against TransitionRule
+            # 4. Match against TransitionRule
             rule = TransitionRule.objects.filter(
                 action=action,
                 from_status=req.status,
@@ -180,16 +214,6 @@ class TransitionService:
                     f"Action '{action}' is not permitted from status '{req.status}'.",
                     current_status=req.status,
                 )
-
-            # 4. Check actor authorization
-            if rule.actor_role != actor.role:
-                raise ForbiddenException(
-                    f"Role '{actor.role}' is not permitted to perform '{action}'. Required: '{rule.actor_role}'."
-                )
-
-            # Additional owner check for Resident actions (e.g. PROVIDE_CLARIFICATION)
-            if rule.actor_role == Role.RESIDENT and req.resident_id != actor.id:
-                raise ForbiddenException("Only the resident who submitted the request may perform this action.")
 
             # Additional assigned technician check for Technician actions (START_WORK, COMPLETE_WORK)
             if rule.actor_role == Role.TECHNICIAN:
@@ -412,29 +436,20 @@ class ReportingService:
         """Calculate operational aggregates scoped by user role.
 
         - Warden: strictly scoped to own residence (INV-4, BR-04, TC-36).
-        - Supervisor & Admin: all residences by default, or filtered by residence_id (TC-37).
-        - Resident & Technician: forbidden (HTTP 403).
+        - Supervisor: all residences by default, or filtered by residence_id (TC-37).
+        - Every other role: forbidden (HTTP 403).
         - Strictly read-only, excludes resident personal identity.
         """
-        if not user.is_authenticated or not user.is_active:
-            raise ForbiddenException("Authentication required.")
-
-        if user.role in (Role.RESIDENT, Role.TECHNICIAN):
+        if user.role not in (Role.WARDEN, Role.SUPERVISOR):
             raise ForbiddenException("You do not have permission to view the operational dashboard.")
 
         # Determine residence scoping
         scoped_residence: Residence | None = None
         if user.role == Role.WARDEN:
             # Warden strictly scoped to own residence (BR-04, TC-36)
-            if not user.residence_id:
-                user.residence = Residence.objects.filter(is_active=True).first()
-                if user.residence:
-                    user.save(update_fields=["residence"])
             scoped_residence = user.residence
-        else:
-            # Supervisor or Admin: can optionally specify residence_id filter
-            if residence_id:
-                scoped_residence = Residence.objects.filter(id=residence_id).first()
+        elif residence_id:
+            scoped_residence = Residence.objects.filter(id=residence_id).first()
 
         # Build base queryset
         qs = MaintenanceRequest.objects.all()
@@ -486,44 +501,27 @@ class ReportingService:
         day3 = now - timedelta(days=3)
         day7 = now - timedelta(days=7)
 
-        open_created_times = list(open_qs.values_list("created_at", flat=True))
-        aging_brackets = {
-            "under_24h": 0,
-            "1_to_3_days": 0,
-            "3_to_7_days": 0,
-            "over_7_days": 0,
-        }
-        total_open_age_seconds = 0.0
-        for created_dt in open_created_times:
-            age_sec = (now - created_dt).total_seconds()
-            total_open_age_seconds += max(0.0, age_sec)
-            if created_dt >= day1:
-                aging_brackets["under_24h"] += 1
-            elif created_dt >= day3:
-                aging_brackets["1_to_3_days"] += 1
-            elif created_dt >= day7:
-                aging_brackets["3_to_7_days"] += 1
-            else:
-                aging_brackets["over_7_days"] += 1
-
-        avg_open_age_hours = (
-            round((total_open_age_seconds / len(open_created_times)) / 3600, 1)
-            if open_created_times
-            else 0.0
+        open_age = ExpressionWrapper(Value(now, output_field=DateTimeField()) - F("created_at"), DurationField())
+        open_stats = open_qs.aggregate(
+            under_24h=Count("id", filter=Q(created_at__gte=day1)),
+            one_to_three=Count("id", filter=Q(created_at__lt=day1, created_at__gte=day3)),
+            three_to_seven=Count("id", filter=Q(created_at__lt=day3, created_at__gte=day7)),
+            over_seven=Count("id", filter=Q(created_at__lt=day7)),
+            average_age=Avg(open_age),
         )
+        aging_brackets = {
+            "under_24h": open_stats["under_24h"],
+            "1_to_3_days": open_stats["one_to_three"],
+            "3_to_7_days": open_stats["three_to_seven"],
+            "over_7_days": open_stats["over_seven"],
+        }
+        average_age = open_stats["average_age"]
+        avg_open_age_hours = round(average_age.total_seconds() / 3600, 1) if average_age else 0.0
 
         # 6. Mean Time to Closure (MTTC)
-        closed_records = list(closed_qs.filter(closed_at__isnull=False).values_list("created_at", "closed_at"))
-        total_closure_seconds = 0.0
-        for created_dt, closed_dt in closed_records:
-            closure_sec = (closed_dt - created_dt).total_seconds()
-            total_closure_seconds += max(0.0, closure_sec)
-
-        mttc_hours = (
-            round((total_closure_seconds / len(closed_records)) / 3600, 1)
-            if closed_records
-            else 0.0
-        )
+        closure_time = ExpressionWrapper(F("closed_at") - F("created_at"), DurationField())
+        mean_closure = closed_qs.filter(closed_at__isnull=False).aggregate(mean=Avg(closure_time))["mean"]
+        mttc_hours = round(mean_closure.total_seconds() / 3600, 1) if mean_closure else 0.0
         mttc_days = round(mttc_hours / 24, 1)
 
         # 7. Active work orders in scope
@@ -534,7 +532,7 @@ class ReportingService:
 
         # Available residences for Supervisor filter dropdown
         residence_options = []
-        if user.role in (Role.SUPERVISOR, Role.ADMIN):
+        if user.role == Role.SUPERVISOR:
             residence_options = list(
                 Residence.objects.filter(is_active=True).values("id", "name")
             )

@@ -7,12 +7,14 @@
 
 import { useState, useMemo } from "react";
 import { AppIcon } from "../components/AppIcon";
+import { Pagination } from "../components/Pagination";
+import { usePageOffset } from "../hooks/usePageOffset";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { usersApi, type UserFilters } from "../api/users";
 import { workflowApi } from "../api/workflow";
 import { AppError } from "../api/client";
-import type { LocationItem } from "../types/workflow";
+import type { LocationItem, ResidenceItem } from "../types/workflow";
 import type {
   AdminUserItem,
   CreateUserPayload,
@@ -56,15 +58,25 @@ export function UserAdminPage() {
     return f;
   }, [searchTerm, selectedRole, selectedStatus]);
 
+  const [offset, setOffset] = usePageOffset(JSON.stringify(queryFilters));
+
   // Query: Users list
   const {
-    data: users = [],
+    data: usersPage,
     isLoading,
     isError,
     refetch,
   } = useQuery({
-    queryKey: ["admin-users", queryFilters],
-    queryFn: () => usersApi.getUsers(queryFilters),
+    queryKey: ["admin-users", queryFilters, offset],
+    queryFn: () => usersApi.getUsers({ ...queryFilters, offset }),
+  });
+  const users = usersPage?.results ?? [];
+  const totalUsers = usersPage?.total_count ?? 0;
+
+  // Query: Residences (for user forms)
+  const { data: residences = [] } = useQuery({
+    queryKey: ["residences"],
+    queryFn: () => workflowApi.getResidences(),
   });
 
   // Query: Locations list (for student room assignments)
@@ -79,13 +91,13 @@ export function UserAdminPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       setIsCreateModalOpen(false);
-      setActionSuccess(`User ${data.email} created successfully.`);
+      setActionSuccess(`User ${data.user.email} created successfully.`);
       setActionError(null);
       // Display temporary credentials modal
       setTempCredentialsModal({
         title: "Account Created Successfully",
-        email: data.email,
-        fullName: data.full_name,
+        email: data.user.email,
+        fullName: data.user.full_name,
         temporaryPassword: data.temporary_password,
         isReset: false,
       });
@@ -112,7 +124,7 @@ export function UserAdminPage() {
     },
     onError: (err) => {
       if (err instanceof AppError && err.statusCode === 409) {
-        setActionError(`Guard Violation (BR-07): ${err.message}`);
+        setActionError(`Guard Violation: ${err.message}`);
       } else if (err instanceof AppError) {
         setActionError(err.message);
       } else {
@@ -127,12 +139,13 @@ export function UserAdminPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       setResettingUser(null);
-      setActionSuccess(`Password reset successfully for ${data.email}.`);
+      const target = resettingUser;
+      setActionSuccess(`Password reset successfully for ${target?.email}.`);
       setActionError(null);
       setTempCredentialsModal({
         title: "Password Reset Completed",
-        email: data.email,
-        fullName: users.find((u) => u.id === data.id)?.full_name || data.email,
+        email: target?.email ?? "",
+        fullName: target?.full_name ?? "",
         temporaryPassword: data.temporary_password,
         isReset: true,
       });
@@ -165,14 +178,14 @@ export function UserAdminPage() {
           </div>
           <h1 className="page-title">User Administration</h1>
           <p className="page-subtitle">
-            Manage system users, assign roles, enforce account status guards (BR-07), and reset passwords.
+            Manage system users, assign roles, enforce account status guards, and reset passwords.
           </p>
         </div>
 
         <div className="page-header-actions">
           <Link to="/users/import" className="btn btn-secondary">
             
-            Import Residents (CSV)
+            Import Users (CSV)
           </Link>
           <button
             type="button"
@@ -296,7 +309,7 @@ export function UserAdminPage() {
           <div className="table-title-group">
             <h2 className="table-title">System Users</h2>
             <span className="queue-count-badge">
-              {users.length} {users.length === 1 ? "user" : "users"}
+              {totalUsers} {totalUsers === 1 ? "user" : "users"}
             </span>
           </div>
         </div>
@@ -329,6 +342,7 @@ export function UserAdminPage() {
             </p>
           </div>
         ) : (
+          <>
           <div className="table-responsive">
             <table className="triage-table" aria-label="System Users Directory">
               <thead>
@@ -366,11 +380,11 @@ export function UserAdminPage() {
                         <div>
                           <span className="mono-code">{u.student_number}</span>
                           {u.assigned_location_name ? (
-                            <div className="font-sm" style={{ color: "var(--color-primary)", fontWeight: 600, marginTop: "2px" }}>
+                            <div className="font-sm text-primary font-weight-semibold mt-1">
                               Room: {u.assigned_location_name}
                             </div>
                           ) : (
-                            <div className="text-muted font-sm" style={{ marginTop: "2px" }}>
+                            <div className="text-muted font-sm mt-1">
                               Room: Unassigned
                             </div>
                           )}
@@ -479,12 +493,15 @@ export function UserAdminPage() {
               </tbody>
             </table>
           </div>
+          <Pagination total={totalUsers} limit={usersPage?.limit ?? 50} offset={offset} onChange={setOffset} />
+          </>
         )}
       </div>
 
       {/* Modal 1: Create User Modal */}
       {isCreateModalOpen && (
         <CreateUserModal
+          residences={residences}
           locations={locations}
           onClose={() => setIsCreateModalOpen(false)}
           onSubmit={(payload) => createUserMutation.mutate(payload)}
@@ -496,6 +513,7 @@ export function UserAdminPage() {
       {/* Modal 2: Edit Role / User Modal */}
       {editingUser && (
         <EditUserModal
+          residences={residences}
           user={editingUser}
           locations={locations}
           onClose={() => setEditingUser(null)}
@@ -555,7 +573,7 @@ export function UserAdminPage() {
               <div className="alert-banner alert-warning-subtle" style={{ margin: 0 }}>
                 <span className="alert-icon"><AppIcon name="lock" size={16} /></span>
                 <div className="alert-text">
-                  <strong>One-Time Temporary Password:</strong> The user is required to change this password on initial login (NFR-02). Securely share these credentials now.
+                  <strong>One-Time Temporary Password:</strong> The user is required to change this password on initial login. Securely share these credentials now.
                 </div>
               </div>
 
@@ -614,6 +632,7 @@ export function UserAdminPage() {
 
 interface CreateUserModalProps {
   locations: LocationItem[];
+  residences: ResidenceItem[];
   onClose: () => void;
   onSubmit: (payload: CreateUserPayload) => void;
   isSubmitting: boolean;
@@ -622,6 +641,7 @@ interface CreateUserModalProps {
 
 function CreateUserModal({
   locations,
+  residences,
   onClose,
   onSubmit,
   isSubmitting,
@@ -631,8 +651,10 @@ function CreateUserModal({
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState<Role>("RESIDENT");
   const [studentNumber, setStudentNumber] = useState("");
+  const [residenceId, setResidenceId] = useState<number | undefined>(undefined);
   const [assignedLocationId, setAssignedLocationId] = useState<number | undefined>(undefined);
   const [localError, setLocalError] = useState<string | null>(null);
+  const hasResidence = role === "RESIDENT" || role === "WARDEN";
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -656,6 +678,7 @@ function CreateUserModal({
       full_name: fullName.trim(),
       role,
       student_number: role === "RESIDENT" ? studentNumber.trim() : undefined,
+      residence_id: hasResidence ? (residenceId ?? null) : null,
       assigned_location_id: role === "RESIDENT" ? (assignedLocationId ?? null) : null,
     });
   };
@@ -733,6 +756,30 @@ function CreateUserModal({
             </select>
           </div>
 
+          {hasResidence && (
+            <div className="filter-group">
+              <label htmlFor="create-residence" className="filter-label">
+                Residence
+              </label>
+              <select
+                id="create-residence"
+                className="filter-select"
+                value={residenceId ?? ""}
+                onChange={(e) => {
+                  setResidenceId(e.target.value ? Number(e.target.value) : undefined);
+                  setAssignedLocationId(undefined);
+                }}
+              >
+                <option value="">Default residence</option>
+                {residences.map((res) => (
+                  <option key={res.id} value={res.id}>
+                    {res.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {role === "RESIDENT" && (
             <>
               <div className="filter-group">
@@ -764,7 +811,7 @@ function CreateUserModal({
                 >
                   <option value="">-- No Room Assigned --</option>
                   {locations
-                    .filter((loc) => loc.kind === "ROOM")
+                    .filter((loc) => loc.kind === "ROOM" && (!residenceId || loc.residence_id === residenceId))
                     .map((loc) => (
                       <option key={loc.id} value={loc.id}>
                         {loc.display_name}
@@ -776,7 +823,7 @@ function CreateUserModal({
           )}
 
           <p className="modal-info-text">
-            A secure temporary password will be generated automatically. The user will be required to choose a new password upon first login (NFR-02).
+            A secure temporary password will be generated automatically. The user will be required to choose a new password upon first login.
           </p>
 
           <div className="modal-actions">
@@ -804,6 +851,7 @@ function CreateUserModal({
 }
 
 interface EditUserModalProps {
+  residences: ResidenceItem[];
   user: AdminUserItem;
   locations: LocationItem[];
   onClose: () => void;
@@ -813,6 +861,7 @@ interface EditUserModalProps {
 }
 
 function EditUserModal({
+  residences,
   user,
   locations,
   onClose,
@@ -823,10 +872,12 @@ function EditUserModal({
   const [role, setRole] = useState<Role>(user.role);
   const [fullName, setFullName] = useState(user.full_name);
   const [studentNumber, setStudentNumber] = useState(user.student_number || "");
+  const [residenceId, setResidenceId] = useState<number | undefined>(user.residence ?? undefined);
   const [assignedLocationId, setAssignedLocationId] = useState<number | undefined>(
     user.assigned_location ?? undefined
   );
   const [localError, setLocalError] = useState<string | null>(null);
+  const hasResidence = role === "RESIDENT" || role === "WARDEN";
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -841,7 +892,9 @@ function EditUserModal({
       role,
       full_name: fullName.trim(),
       student_number: role === "RESIDENT" ? studentNumber.trim() : undefined,
-      assigned_location_id: role === "RESIDENT" ? (assignedLocationId ?? null) : null,
+      residence_id: hasResidence ? residenceId : undefined,
+      // 0 clears the room on the server; undefined would leave it unchanged
+      assigned_location_id: role === "RESIDENT" ? (assignedLocationId ?? 0) : undefined,
     });
   };
 
@@ -912,6 +965,29 @@ function EditUserModal({
             </select>
           </div>
 
+          {hasResidence && (
+            <div className="filter-group">
+              <label htmlFor="edit-residence" className="filter-label">
+                Residence
+              </label>
+              <select
+                id="edit-residence"
+                className="filter-select"
+                value={residenceId ?? ""}
+                onChange={(e) => {
+                  setResidenceId(e.target.value ? Number(e.target.value) : undefined);
+                  setAssignedLocationId(undefined);
+                }}
+              >
+                {residences.map((res) => (
+                  <option key={res.id} value={res.id}>
+                    {res.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {role === "RESIDENT" && (
             <>
               <div className="filter-group">
@@ -942,7 +1018,7 @@ function EditUserModal({
                 >
                   <option value="">-- No Room Assigned --</option>
                   {locations
-                    .filter((loc) => loc.kind === "ROOM")
+                    .filter((loc) => loc.kind === "ROOM" && (!residenceId || loc.residence_id === residenceId))
                     .map((loc) => (
                       <option key={loc.id} value={loc.id}>
                         {loc.display_name}
@@ -1024,7 +1100,7 @@ function DeactivateConfirmModal({
           </div>
 
           <p className="modal-info-text text-danger">
-            <strong>Warning (BR-07):</strong> Deactivating this user will terminate all their active sessions immediately. If this is the last active Administrator or a Technician with open work orders, this action will be strictly rejected.
+            <strong>Warning:</strong> Deactivating this user will terminate all their active sessions immediately. If this is the last active Administrator or a Technician with open work orders, this action will be strictly rejected.
           </p>
 
           <div className="modal-actions">

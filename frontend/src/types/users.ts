@@ -27,11 +27,12 @@ export interface CreateUserPayload {
   full_name: string;
   role: Role;
   student_number?: string;
-  residence?: number | null;
+  residence_id?: number | null;
   assigned_location_id?: number | null;
 }
 
-export interface CreateUserResponse extends AdminUserItem {
+export interface CreateUserResponse {
+  user: AdminUserItem;
   temporary_password: string;
 }
 
@@ -39,14 +40,12 @@ export interface UpdateUserPayload {
   full_name?: string;
   role?: Role;
   student_number?: string;
-  residence?: number | null;
+  residence_id?: number | null;
   assigned_location_id?: number | null;
   is_active?: boolean;
 }
 
 export interface ResetPasswordResponse {
-  id: number;
-  email: string;
   temporary_password: string;
   message: string;
 }
@@ -56,6 +55,7 @@ export interface CsvImportCredential {
   email: string;
   full_name: string;
   student_number: string;
+  role: Role;
   temporary_password: string;
 }
 

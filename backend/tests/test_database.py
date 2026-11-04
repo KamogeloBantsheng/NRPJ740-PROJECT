@@ -126,6 +126,21 @@ class TestDatabaseInvariantsAndConstraints:
                         [audit.id],
                     )
 
+    def test_tc39_application_role_has_no_tamper_privileges(self, resident_user: User):
+        """TC-39, AC-17.2: UPDATE, DELETE and TRUNCATE fail when run as the application role."""
+        AuditEvent.objects.create(action=AuditAction.LOGIN_FAILED, actor=resident_user, details={})
+
+        for statement in (
+            "UPDATE audit_logs SET note = 'Tampered'",
+            "DELETE FROM audit_logs",
+            "TRUNCATE audit_logs",
+        ):
+            with pytest.raises(ProgrammingError, match="permission denied"):
+                with transaction.atomic():
+                    with connection.cursor() as cursor:
+                        cursor.execute("SET LOCAL ROLE nrpj_app")
+                        cursor.execute(statement)
+
     def test_nt06_physical_constraints_violation_rejected(
         self,
         resident_user: User,

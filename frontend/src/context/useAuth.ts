@@ -3,15 +3,15 @@
  */
 
 import { createContext, useContext } from "react";
-import type { LoginPayload, LoginResult, MfaVerifyPayload, Role, User } from "../types/auth";
+import type { LoginPayload, Role, User } from "../types/auth";
 
 export interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (payload: LoginPayload) => Promise<LoginResult>;
-  verifyMfa: (payload: MfaVerifyPayload) => Promise<User>;
+  login: (payload: LoginPayload) => Promise<User>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   getRoleHome: (role: Role) => string;
 }
 

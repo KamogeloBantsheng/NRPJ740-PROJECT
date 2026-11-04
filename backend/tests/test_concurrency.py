@@ -87,7 +87,7 @@ class TestConcurrencyGuards:
         req.refresh_from_db()
         assert req.status in (RequestStatus.APPROVED, RequestStatus.REJECTED)
 
-    def test_tc23_twenty_simultaneous_assignment_threads(
+    def test_tc23_twenty_simultaneous_assignments_fifty_times(
         self,
         supervisor_user: User,
         technician_user: User,
@@ -95,24 +95,16 @@ class TestConcurrencyGuards:
         location: Location,
         category: FaultCategory,
     ):
-        """TC-23: 20 simultaneous assign requests on a single request.
+        """TC-23: 20 simultaneous assignments of one request, repeated 50 times (NFR-04).
 
-        Verifies exactly 1 success and 19 conflicts (409) under row locking (NFR-04).
+        Every run must give exactly one success, 19 conflicts and one active work order.
         """
-        req = MaintenanceRequest.objects.create(
-            resident=resident_user,
-            location=location,
-            category=category,
-            description="Elevator door sensor failure causing intermittent stoppage.",
-            status=RequestStatus.APPROVED,
-            priority=Priority.HIGH,
-        )
 
-        def attempt_assign(worker_id: int):
+        def attempt_assign(request_id: int) -> int:
             client = APIClient()
             client.force_authenticate(user=supervisor_user)
             resp = client.post(
-                f"/api/requests/{req.id}/transition/",
+                f"/api/requests/{request_id}/transition/",
                 {
                     "action": "ASSIGN",
                     "expected_status": RequestStatus.APPROVED,
@@ -121,25 +113,28 @@ class TestConcurrencyGuards:
                 format="json",
             )
             connection.close()
-            return (worker_id, resp.status_code)
+            return resp.status_code
 
         num_threads = 20
-        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-            futures = [executor.submit(attempt_assign, i) for i in range(num_threads)]
-            results = [f.result() for f in concurrent.futures.as_completed(futures)]
+        for _ in range(50):
+            req = MaintenanceRequest.objects.create(
+                resident=resident_user,
+                location=location,
+                category=category,
+                description="Elevator door sensor failure causing intermittent stoppage.",
+                status=RequestStatus.APPROVED,
+                priority=Priority.HIGH,
+            )
 
-        status_codes = [r[1] for r in results]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+                status_codes = list(executor.map(attempt_assign, [req.id] * num_threads))
 
-        # Exactly 1 thread must succeed (200 OK)
-        assert status_codes.count(status.HTTP_200_OK) == 1
+            assert status_codes.count(status.HTTP_200_OK) == 1
+            assert status_codes.count(status.HTTP_409_CONFLICT) == num_threads - 1
 
-        # Remaining 19 threads must receive 409 Conflict
-        assert status_codes.count(status.HTTP_409_CONFLICT) == 19
+            active_orders = WorkOrder.objects.filter(request=req, ended_at__isnull=True)
+            assert active_orders.count() == 1
+            assert active_orders.first().technician_id == technician_user.id
 
-        # Verify DB state: exactly 1 active work order exists
-        active_wos = WorkOrder.objects.filter(request=req, ended_at__isnull=True)
-        assert active_wos.count() == 1
-        assert active_wos.first().technician_id == technician_user.id
-
-        req.refresh_from_db()
-        assert req.status == RequestStatus.ASSIGNED
+            req.refresh_from_db()
+            assert req.status == RequestStatus.ASSIGNED

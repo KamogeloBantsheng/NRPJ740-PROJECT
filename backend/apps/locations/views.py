@@ -1,5 +1,6 @@
-"""API views for locations and categories reference endpoints (FR-05, SCR-04)."""
+"""API views for residences, locations and categories reference endpoints (FR-05, SCR-04)."""
 
+from config.pagination import parse_int
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import IsAuthenticated
@@ -8,8 +9,25 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import Role
-from apps.locations.models import FaultCategory, Location, LocationKind
-from apps.locations.serializers import FaultCategorySerializer, LocationSerializer
+from apps.accounts.permissions import IsSupervisorOrAdmin
+from apps.locations.models import FaultCategory, Location, LocationKind, Residence
+from apps.locations.serializers import FaultCategorySerializer, LocationSerializer, ResidenceSerializer
+
+
+class ResidenceListView(APIView):
+    """List active residences for the Supervisor queue filter and Admin user forms (FR-03, FR-08)."""
+
+    permission_classes = (IsAuthenticated, IsSupervisorOrAdmin)
+
+    @extend_schema(
+        operation_id="api_residences_list",
+        summary="List active residences",
+        description="List active residences for the triage filter and user administration (FR-03, FR-08).",
+        responses={200: ResidenceSerializer(many=True)},
+    )
+    def get(self, request: Request) -> Response:
+        serializer = ResidenceSerializer(Residence.objects.filter(is_active=True), many=True)
+        return Response(serializer.data)
 
 
 class LocationListView(APIView):
@@ -45,8 +63,8 @@ class LocationListView(APIView):
                 qs = qs.none()
         else:
             # Supervisors/Technicians/Admins may filter by residence if provided
-            residence_id = request.query_params.get("residence_id")
-            if residence_id:
+            residence_id = parse_int(request.query_params.get("residence_id"))
+            if residence_id is not None:
                 qs = qs.filter(residence_id=residence_id)
 
         serializer = LocationSerializer(qs, many=True)

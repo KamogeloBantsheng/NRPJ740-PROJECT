@@ -97,7 +97,7 @@ export function AuditLogPage() {
           </div>
           <h1 className="page-title">System Audit Trail & Security Log</h1>
           <p className="page-subtitle">
-            Searchable append-only audit records of lifecycle transitions, security events, and administrative actions (FR-18, NFR-05).
+            Searchable append-only audit records of lifecycle transitions, security events, and administrative actions.
           </p>
         </div>
 

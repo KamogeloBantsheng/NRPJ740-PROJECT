@@ -14,8 +14,10 @@ services:
       POSTGRES_DB: ${DB_NAME:-nrpj740_dev}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_SUPERUSER_PASSWORD:-postgres_master_secret}
+      DB_OWNER_PASSWORD: ${DB_OWNER_PASSWORD:-change-me-owner-secret}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:-change-me-app-secret}
     volumes:
-      - ./deploy/db/01-init-roles.sql:/docker-entrypoint-initdb.d/01-init-roles.sql:ro
+      - ./deploy/db/01-init-roles.sh:/docker-entrypoint-initdb.d/01-init-roles.sh:ro
       - db_data:/var/lib/postgresql/data
     networks:
       - internal
@@ -41,6 +43,7 @@ services:
       DB_PORT: 5432
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-insecure-compose-secret-key-32charsmin}
       DJANGO_DEBUG: "false"
+      DB_STATEMENT_TIMEOUT_MS: 0
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-DemoPass#2026}
     depends_on:
@@ -65,7 +68,8 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-insecure-compose-secret-key-32charsmin}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
       ALLOWED_HOSTS: localhost,127.0.0.1,api,proxy
-      CSRF_TRUSTED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
+      TRUSTED_PROXY_COUNT: 1
       SESSION_COOKIE_AGE: ${SESSION_COOKIE_AGE:-28800}
     depends_on:
       db:
