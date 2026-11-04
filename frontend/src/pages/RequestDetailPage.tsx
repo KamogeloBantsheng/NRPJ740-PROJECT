@@ -413,7 +413,7 @@ export function RequestDetailPage() {
       {req.active_work_order && (
         <div className="card work-order-card">
           <div className="work-order-header">
-            <span className="work-order-icon"><AppIcon name="wrench" size={24} color="#be123c" /></span>
+            <span className="work-order-icon"><AppIcon name="wrench" size={24} color="var(--navy)" /></span>
             <div>
               <h2 className="work-order-title">Active Work Order Assignment</h2>
               <p className="work-order-subtitle">

@@ -12,7 +12,7 @@ paths:
         (FR-18, SCR-13, TC-41).
       summary: Search system audit logs
       tags:
-      - api
+      - audit-logs
       security:
       - cookieAuth: []
       responses:
@@ -28,7 +28,7 @@ paths:
       description: Issues CSRF cookie token for single-origin web client writes.
       summary: Get CSRF token
       tags:
-      - api
+      - auth
       security:
       - {}
       responses:
@@ -45,7 +45,7 @@ paths:
         ID (FR-01, SCR-01).
       summary: User sign-in
       tags:
-      - api
+      - auth
       requestBody:
         content:
           application/json:
@@ -73,7 +73,7 @@ paths:
       description: Invalidates user session and clears authentication cookies (FR-01).
       summary: User sign-out
       tags:
-      - api
+      - auth
       security:
       - cookieAuth: []
       responses:
@@ -90,7 +90,7 @@ paths:
         SCR-02).
       summary: Change password
       tags:
-      - api
+      - auth
       requestBody:
         content:
           application/json:
@@ -118,7 +118,7 @@ paths:
       description: List approved active fault categories in Moroka Hall (FR-05, SCR-04).
       summary: List fault categories
       tags:
-      - api
+      - categories
       security:
       - cookieAuth: []
       responses:
@@ -137,7 +137,7 @@ paths:
         SCR-10).
       summary: Operational dashboard metrics
       tags:
-      - api
+      - dashboard
       security:
       - cookieAuth: []
       responses:
@@ -154,7 +154,7 @@ paths:
         (NFR-09).
       summary: Health check endpoint
       tags:
-      - api
+      - health
       security:
       - cookieAuth: []
       - {}
@@ -178,7 +178,7 @@ paths:
         (FR-05, SCR-04).
       summary: List active locations
       tags:
-      - api
+      - locations
       security:
       - cookieAuth: []
       responses:
@@ -196,7 +196,7 @@ paths:
       description: Retrieves profile and role for current authenticated user (FR-01).
       summary: Current user profile
       tags:
-      - api
+      - me
       security:
       - cookieAuth: []
       responses:
@@ -213,7 +213,7 @@ paths:
         BR-05).
       summary: List maintenance requests
       tags:
-      - api
+      - requests
       security:
       - cookieAuth: []
       responses:
@@ -228,7 +228,7 @@ paths:
       description: Submit a new fault report under Table 5.1 T1 rules (SCR-04, FR-05).
       summary: Submit maintenance request
       tags:
-      - api
+      - requests
       requestBody:
         content:
           application/json:
@@ -269,7 +269,7 @@ paths:
           type: integer
         required: true
       tags:
-      - api
+      - requests
       security:
       - cookieAuth: []
       responses:
@@ -292,7 +292,7 @@ paths:
           type: integer
         required: true
       tags:
-      - api
+      - requests
       security:
       - cookieAuth: []
       responses:
@@ -317,7 +317,7 @@ paths:
           type: integer
         required: true
       tags:
-      - api
+      - requests
       requestBody:
         content:
           application/json:
@@ -346,7 +346,7 @@ paths:
         (FR-03, FR-08).
       summary: List active residences
       tags:
-      - api
+      - residences
       security:
       - cookieAuth: []
       responses:
@@ -365,7 +365,7 @@ paths:
         (SCR-07, FR-10, FR-11).
       summary: List active technicians for dispatch
       tags:
-      - api
+      - technicians
       security:
       - cookieAuth: []
       responses:
@@ -384,7 +384,7 @@ paths:
         by residence and category (FR-08, SCR-06). Pass status to include other states.
       summary: List the triage queue
       tags:
-      - api
+      - triage-queue
       security:
       - cookieAuth: []
       responses:
@@ -401,7 +401,7 @@ paths:
         (FR-03, SCR-11).
       summary: List users
       tags:
-      - api
+      - users
       security:
       - cookieAuth: []
       responses:
@@ -417,7 +417,7 @@ paths:
         (FR-03, SCR-11).
       summary: Create user account
       tags:
-      - api
+      - users
       requestBody:
         content:
           application/json:
@@ -451,7 +451,7 @@ paths:
           type: integer
         required: true
       tags:
-      - api
+      - users
       security:
       - cookieAuth: []
       responses:
@@ -473,7 +473,7 @@ paths:
           type: integer
         required: true
       tags:
-      - api
+      - users
       requestBody:
         content:
           application/json:
@@ -507,7 +507,7 @@ paths:
           type: integer
         required: true
       tags:
-      - api
+      - users
       security:
       - cookieAuth: []
       responses:
@@ -524,7 +524,7 @@ paths:
         SCR-12).
       summary: Batch import users from CSV
       tags:
-      - api
+      - users
       security:
       - cookieAuth: []
       responses:
@@ -542,7 +542,7 @@ paths:
         to see work awaiting verification.
       summary: List assigned technician work orders
       tags:
-      - api
+      - work-queue
       security:
       - cookieAuth: []
       responses:

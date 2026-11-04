@@ -1,6 +1,6 @@
 /**
  * SCR-12: Bulk user import Screen (FR-04, BR-07, NFR-03, TC-07, TC-08, TC-09, SCR-12).
- * Enables System Administrators to bulk-import student resident accounts with all-or-nothing
+ * Enables System Administrators to bulk-import user accounts with all-or-nothing
  * transaction guarantees, row-level error reporting, and exportable one-time temporary credentials.
  */
 
@@ -204,8 +204,8 @@ export function ResidentImportPage() {
         </div>
         <div className="import-specs-grid">
           <div className="spec-item">
-            <span className="spec-label">Mandatory Columns</span>
-            <span className="spec-value mono-code">email, full_name, role, residence, student_number, room</span>
+            <span className="spec-label">Required Columns</span>
+            <span className="spec-value mono-code">email, full_name, student_number (optional: role, residence, room)</span>
           </div>
           <div className="spec-item">
             <span className="spec-label">Encoding & Size Limits</span>
@@ -315,7 +315,7 @@ export function ResidentImportPage() {
           <div className="loading-state mt-4" role="status" aria-live="polite">
             <div className="spinner" aria-hidden="true" />
             <p className="loading-text">
-              Validating CSV rows, checking uniqueness, and creating resident accounts atomically...
+              Validating CSV rows, checking uniqueness, and creating accounts atomically...
             </p>
           </div>
         )}
@@ -337,7 +337,7 @@ export function ResidentImportPage() {
                 Validation Failures ({badRows.length} {badRows.length === 1 ? "row" : "rows"} flagged)
               </h3>
               <p className="bad-rows-subtitle">
-                Please correct the following errors in your CSV file and re-upload. No resident accounts were created in the database.
+                Please correct the following errors in your CSV file and re-upload. No accounts were created.
               </p>
 
               <div className="table-responsive">
@@ -379,7 +379,7 @@ export function ResidentImportPage() {
           <div className="alert-banner alert-success" style={{ margin: 0 }} role="status">
             <span className="alert-icon"><AppIcon name="check" size={16} /></span>
             <div className="alert-text">
-              <strong>Batch Import Successful:</strong> Created {importResult.created_count} resident accounts!
+              <strong>Batch Import Successful:</strong> Created {importResult.created_count} accounts.
             </div>
           </div>
 
@@ -387,7 +387,7 @@ export function ResidentImportPage() {
             <div className="action-bar-text">
               <h3 className="action-bar-title">One-Time Temporary Credentials</h3>
               <p className="action-bar-subtitle">
-                These generated passwords will NOT be displayed again. Download the CSV file now to distribute login credentials securely to students.
+                These generated passwords will NOT be displayed again. Download the CSV file now to give each user their sign-in details securely.
               </p>
             </div>
             <button

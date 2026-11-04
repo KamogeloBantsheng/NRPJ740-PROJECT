@@ -1,4 +1,4 @@
-# Production Dockerfile for Django API (Section 5.8, Table 5.10)
+# Production Dockerfile for Django API (Section 5.8)
 FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create non-root system user (UID/GID 10001 per Table 5.10)
+# Create non-root system user (UID/GID 10001, Section 5.8)
 RUN groupadd -g 10001 appuser && \
     useradd -u 10001 -g appuser -s /bin/bash -m appuser
 

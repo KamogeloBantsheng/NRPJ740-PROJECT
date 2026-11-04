@@ -1,4 +1,4 @@
-# NPRJ740 Production Docker Compose Stack (Section 5.8, Table 5.10, ADR-04)
+# NPRJ740 Production Docker Compose Stack (Section 5.8, ADR-04)
 # Four-container architecture:
 #   proxy   : Nginx reverse proxy on host port 8080 (security headers, CSP, 2MB body limit)
 #   api     : Django Gunicorn WSGI running as non-root user (appuser UID 10001)

@@ -1,6 +1,6 @@
 # Architectural & Implementation Deviations Register
 
-This document records any variance between the implementation and the text of `NPRJ740_Final_Project_Report_v4.pdf`, along with rationale and resolution. Report v5 absorbs DEV-05 and DEV-07 to DEV-16, so they are no longer differences from the current report.
+This document records any variance between the implementation and the text of `NPRJ740_Final_Project_Report_v4.pdf`, along with rationale and resolution. The final report (v6) absorbs DEV-05 and DEV-07 to DEV-16, so they are no longer differences from it.
 
 | ID | Topic | Report Statement | Implementation Choice | Rationale |
 |---|---|---|---|---|

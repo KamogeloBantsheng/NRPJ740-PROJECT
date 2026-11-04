@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import { AppError } from "../api/client";
 
@@ -25,16 +25,6 @@ export function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchParams] = useSearchParams();
   const sessionExpired = searchParams.get("expired") === "1";
-
-  // If already logged in, redirect to home
-  if (isAuthenticated && user) {
-    if (user.must_change_password) {
-      navigate("/change-password", { replace: true });
-    } else {
-      const fromPath = (location.state as { from?: { pathname: string } })?.from?.pathname;
-      navigate(fromPath || getRoleHome(user.role), { replace: true });
-    }
-  }
 
   const {
     register,
@@ -74,6 +64,12 @@ export function LoginPage() {
       setIsSubmitting(false);
     }
   };
+
+  // Already signed in: leave the sign-in page
+  if (isAuthenticated && user) {
+    const fromPath = (location.state as { from?: { pathname: string } })?.from?.pathname;
+    return <Navigate to={user.must_change_password ? "/change-password" : fromPath || getRoleHome(user.role)} replace />;
+  }
 
   return (
     <main className="auth-page-container">
