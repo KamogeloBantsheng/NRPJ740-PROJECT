@@ -34,7 +34,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--with-demo",
             action="store_true",
-            help="Also seed role demo accounts (FR-01, AGENT_BRIEF item 8).",
+            help="Also seed role demo accounts (FR-01, System Specification Section 4.8).",
         )
 
     def handle(self, *args, **options):

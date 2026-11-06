@@ -164,6 +164,6 @@ SPECTACULAR_SETTINGS = {
     "COMPONENT_SPLIT_REQUEST": True,
 }
 
-# Demo Data Seeding Settings (AGENT_BRIEF item 8)
+# Demo Data Seeding Settings (System Specification Section 4.8)
 SEED_DEMO_DATA = get_env("SEED_DEMO_DATA", "false", cast=bool)
 DEMO_PASSWORD = get_env("DEMO_PASSWORD", "DemoPass#2026")

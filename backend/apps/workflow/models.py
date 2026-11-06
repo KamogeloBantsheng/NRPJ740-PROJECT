@@ -36,7 +36,7 @@ class MaintenanceRequest(models.Model):
     """Fault report domain model (Table 5.7).
 
     Request status is modified solely via TransitionService.execute(), never directly
-    or through model methods (AGENT_BRIEF section 5, Section 5.4).
+    or through model methods (System Specification Section 5, Section 5.4).
     """
 
     id = models.BigAutoField(primary_key=True)
@@ -194,7 +194,7 @@ class EndReason(models.TextChoices):
 class WorkOrder(models.Model):
     """Assignment of a maintenance request to a technician (Table 5.7).
 
-    A work order has NO status of its own (CH-05, AGENT_BRIEF section 2).
+    A work order has NO status of its own (CH-05, System Specification Section 2).
     Its lifecycle is governed purely by ended_at and end_reason.
     At most one active work order can exist per request (BR-01, partial unique index).
     """

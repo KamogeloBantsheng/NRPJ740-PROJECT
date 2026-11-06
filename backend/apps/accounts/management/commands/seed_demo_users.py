@@ -1,4 +1,4 @@
-"""Idempotent seed command for role demo users (FR-01, Section 8, AGENT_BRIEF item 8)."""
+"""Idempotent seed command for role demo users (FR-01, Section 8, System Specification Section 4.8)."""
 
 from django.conf import settings
 from django.core.management import call_command

@@ -22,7 +22,7 @@ from apps.workflow.models import (
 
 
 class TransitionService:
-    """Orchestrates all request state transitions under row locks (AGENT_BRIEF section 5, Section 5.1).
+    """Orchestrates all request state transitions under row locks (System Specification Section 5, Section 5.1).
 
     Enforces Table 5.1 legal transitions, concurrency guards via expected_status (409),
     role-based transition authorization, and writes append-only audit records in the same transaction.

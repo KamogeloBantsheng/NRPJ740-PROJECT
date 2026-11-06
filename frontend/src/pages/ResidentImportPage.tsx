@@ -253,7 +253,7 @@ export function ResidentImportPage() {
           />
           <div className="dropzone-inner">
             <div className="dropzone-icon"><AppIcon name="folder" size={40} color="var(--color-primary)" /></div>
-            <p className="dropzone-prompt">
+            <p className="dropzone-instruction">
               <strong>Click to upload</strong> or drag and drop your CSV file here
             </p>
             <p className="dropzone-hint">Standard comma-separated format (.csv), up to 2 MB</p>
